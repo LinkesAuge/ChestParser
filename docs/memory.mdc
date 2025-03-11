@@ -21,6 +21,27 @@ alwaysApply: false
 - 2024-03-12: Comprehensive UI refactoring and drag-and-drop implementation
 - 2024-03-13: Enhanced Windows-specific drag and drop compatibility with detailed logging
 - 2024-03-14: Implemented alternative file import methods with menu bar and button to provide reliable import options beyond drag and drop
+- 2024-03-14: Simplified and enhanced drag and drop implementation with more permissive event acceptance and improved file path handling
+- 2024-03-15: Fixed crossed-out red icon issue during drag operations by enhancing drag event handling
+- 2024-03-16: Added comprehensive diagnostic logging to troubleshoot persistent drag and drop issues
+- 2024-03-17: Implemented direct diagnostic tools to detect drag and drop system issues at multiple levels
+- 2024-03-18: Identified system-level drag and drop issues and implemented a persistent file selection panel as a reliable alternative
+- 2024-03-18: Fixed resizeEvent handler in the window to properly accept required parameters (self, event)
+- 2024-03-18: Removed all drag and drop functionality and refocused on file selection methods only
+- 2024-03-18: Simplified the UI by removing diagnostic tools and refactoring the import tab
+- 2024-03-18: Removed the persistent file selection panel for a cleaner interface
+- 2024-03-21: Redesigned the application theme to match the Total Battle game with dark blue and gold accents
+- 2024-03-22: Fixed analysis results error with dictionary empty check and removed duplicated menu items
+- 2024-03-23: Implemented ConfigManager for persistent application settings
+- 2024-03-23: Enhanced ImportArea to use configured import directories
+- 2024-03-23: Updated export functionality to use configured export directories
+- 2024-03-23: Enhanced German character encoding support for CSV files
+- 2024-03-23: Fixed chart generation and added comprehensive logging
+- 2024-03-24: Improved German umlaut detection by identifying and fixing garbled umlauts in player names
+- 2024-03-24: Fixed chart column name case sensitivity issue by using DataFrame column names directly in the UI
+- 2024-03-25: Fixed chart view selection for SOURCE and CHEST columns
+- 2024-03-25: Improved button text readability by changing from black to white text
+- 2024-03-25: Enforced required CSV columns (DATE, PLAYER, SOURCE, CHEST, SCORE) and automatic removal of extra columns
 
 ## Current Tasks
 - Fixed compatibility issue between matplotlib and PySide6
@@ -34,40 +55,79 @@ alwaysApply: false
   - Updated both filter_raw_data and update_filter_options methods
 - Updated PySide6 filtering API usage
   - Changed deprecated `setFilterRegExp("")` to `setFilterFixedString("")`
-- Fixed drag and drop functionality (red crossed circle issue)
-  - Used event.acceptProposedAction() instead of event.accept()
-  - Implemented proper drag and drop in both DropArea and MainWindow
-  - Added comprehensive event handling for all drag and drop events
-  - Improved debug printing for troubleshooting
-- Enhanced drag and drop functionality for better user experience
-  - Added file extension checking before accepting drags
-  - Added visual feedback during valid drag operations 
-  - Improved MainWindow handling of drop events
-  - Ensured consistent event handling across all drag and drop events
+- Completely redesigned the file import approach:
+  - Removed all drag and drop functionality due to system-level compatibility issues
+  - Renamed DropArea to ImportArea with focus solely on file selection
+  - Simplified UI with clear focus on reliable file selection methods
 - Comprehensive UI refactoring
   - Restructured tab creation and initialization
   - Improved UI component layout and organization
   - Separated UI creation from data handling
   - Added proper error handling for all data operations
   - Enhanced CSV file loading with detailed error checking
-  - Added comprehensive debugging for drag and drop operations
-  - Fixed interactions between MainWindow and DropArea components
+  - Removed diagnostic tools and simplified the interface
+  - Fixed interactions between components
   - Improved visual feedback throughout the application
-- Windows-specific drag and drop enhancements
-  - Resolved Windows URL and path format issues
-  - Enhanced event state transitions during drag and drop
-  - Added advanced path normalization for Windows compatibility
-  - Implemented multiple fallback mechanisms for file URL parsing
-  - Added detailed binary file inspection for troubleshooting
-  - Improved error tracing with comprehensive try/except blocks
-  - Added explicit drop action setting with Qt.CopyAction
-  - Expanded logging for all drag and drop events
-- Providing multiple reliable import methods for CSV files including:
+  - Removed the persistent file selection panel at the top of the window for a cleaner interface
+- Multiple reliable import methods for CSV files:
   - File menu with Import option (Ctrl+O)
-  - Explicit import button in the drop area
-  - Maintain existing drag and drop as a fallback
-- Improving visual feedback and instructions for all import methods
-- Ensuring the application works reliably across different Windows configurations
+  - Import button in the dedicated import area
+- Implemented Total Battle-inspired UI theme:
+  - Created a dark blue and gold color scheme to match the game's aesthetics
+  - Enhanced button styling with gold gradients
+  - Added elegant styling for all UI components
+  - Improved chart visualization with themed colors
+  - Added proper spacing and visual hierarchy to the interface
+  - Created more professional component styling with better visual feedback
+  - Enhanced the file import area with better styling and clearer instructions
+- Fixed chart generation error:
+  - Fixed "dict has no attribute empty" error in update_chart method
+  - Changed from checking self.analysis_results.empty to checking if dict is None or empty
+- Fixed duplicated menu items:
+  - Removed redundant setup_menu() call in MainWindow.__init__
+  - Kept only the setup_menu() call in setup_ui() method
+- Implemented configuration management system:
+  - Created ConfigManager class for persistent application settings
+  - Added config.ini file with default settings
+  - Created automatic directory creation for import and export
+  - Added import and export directory configuration
+  - Implemented last used directory tracking
+  - Enhanced ImportArea to use configured import directories
+  - Updated export functionality to use configured export directories
+- Enhanced German character encoding support:
+  - Added detection of German umlauts in file content
+  - Prioritized German-friendly encodings when umlauts are detected
+  - Added configuration options for German encodings
+  - Enhanced logging for encoding detection
+- Fixed chart generation and added comprehensive logging:
+  - Added detailed logging throughout chart generation
+  - Added robust column existence checking
+  - Enhanced error handling with traceback printing
+  - Added specific logging for each chart type
+- Improved German umlaut detection and handling:
+  - Added detection for garbled umlaut representations (like 'Ã¤' instead of 'ä')
+  - Implemented automatic repair of misencoded player names
+  - Enhanced file reading to check more content for umlauts
+  - Added specific detection and repair for names like 'FeldjÃ¤ger'
+  - Improved verification and reporting of German character handling
+- Fixed chart column name case sensitivity issue:
+  - Updated chart data selector to use uppercase column names matching the DataFrame
+  - Simplified the update_chart method by removing unnecessary column name mapping
+  - Improved charts with better use of direct column names for labels and plotting
+- Fixed chart view selection for SOURCE and CHEST columns:
+  - Implemented automatic view selection based on the selected x-axis column
+  - Added synchronization between the chart data selector and analysis view selector
+  - Ensured proper DataFrame selection based on column selection
+  - Improved detection of SCORE vs COUNT columns in different views
+- Improved button text readability:
+  - Changed button text color from black to white for better contrast
+  - Used the theme's foreground color for consistency throughout the application
+- Enforced required CSV columns:
+  - Modified the CSV loading code to require all mandatory columns (DATE, PLAYER, SOURCE, CHEST, SCORE)
+  - Added automatic removal of any extra columns
+  - Updated all CSV loading code paths to enforce these requirements
+  - Made the import instructions clearer about column requirements
+  - Improved user feedback when columns are missing or removed
 
 ## Dependencies
 - PySide6: 6.8.2.1
@@ -77,7 +137,7 @@ alwaysApply: false
 - datetime: 5.5+
 
 ## Notes
-- The application uses a dark theme for the UI
+- The application uses a dark blue and gold theme inspired by the Total Battle game
 - Has multiple tabs: Import, Raw Data, Analysis, and Charts
 - CSV files may contain special characters requiring different encodings (like Windows-1252 or Latin-1)
 - Proper pandas DataFrame handling requires checking `is None` or `.empty` rather than direct boolean evaluation
@@ -102,4 +162,44 @@ alwaysApply: false
   - Handle leading slash removal for Windows paths
   - Explicitly set dropAction to Qt.CopyAction
   - Catch all exceptions during drag and drop to prevent crashes
-  - Check file attributes (exists, readable, size) after path extraction 
+  - Check file attributes (exists, readable, size) after path extraction
+- Advanced drag and drop techniques for Qt applications:
+  - Accept ALL drag enter events initially to ensure visual feedback works
+  - Only filter by file type at the drop event stage
+  - Try multiple methods to extract file paths from URLs
+  - Handle text-based MIME data as a fallback mechanism
+  - Provide detailed diagnostic information in debug mode
+  - Preserve original file paths if normalization fails
+  - Check file existence at multiple stages
+  - Try alternative CSV parsing approaches
+- Critical for working drag and drop in Qt:
+  - Always unconditionally accept dragEnterEvent and dragMoveEvent
+  - Use both event.accept() and event.acceptProposedAction() for certainty
+  - Only validate the file after accepting the dropEvent
+  - Maintain visual consistency with style updates during drag operations
+- Comprehensive diagnostic logging for troubleshooting:
+  - Use clear section markers in log output (=== or --- surrounded sections)
+  - Include timestamps for critical operations
+  - Log MIME data types and content
+  - Include file existence checks and permissions
+  - Show file content samples for encoding verification 
+  - Use traceback.print_exc() for full stack traces
+  - Log signal emissions and their parameters
+  - Check event.isAccepted() status at key points
+  - Verify file paths at multiple stages
+- System-level drag and drop issues:
+  - Some Windows configurations may have drag and drop disabled or blocked
+  - Security settings can prevent drag and drop from working properly
+  - Always provide alternative file selection methods that don't rely on drag and drop
+  - Use persistent UI elements for critical file operations
+  - Provide clear visual feedback for file operations
+  - Use QTimer for non-blocking UI updates during file processing 
+- Overriding Qt event handlers:
+  - Always include both `self` and `event` parameters (e.g., `def resizeEvent(self, event):`)
+  - When using method binding with `types.MethodType`, ensure the function has the correct signature
+  - Call the parent class's original method when appropriate (e.g., `QMainWindow.resizeEvent(self, event)`)
+  - When using closures in the main function to override events, remember that the function will have `self` injected as first parameter
+- Dictionary vs DataFrame checks:
+  - When checking if a dictionary is empty, use `if not dict_object` instead of `dict_object.empty`
+  - When checking if a DataFrame is empty, use `if df is None or df.empty`
+  - Be careful not to mix these patterns as dictionaries don't have an `empty` attribute 

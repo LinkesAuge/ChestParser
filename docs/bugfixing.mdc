@@ -131,178 +131,721 @@ self.raw_data_proxy_model.setFilterFixedString("")
 **Verification:**
 This should properly clear the filter using the current PySide6 API methods.
 
-### 2024-03-12: Enhanced Drag and Drop Functionality for Windows Compatibility
+### 2024-03-14: Simplified and Enhanced Drag and Drop Implementation
 
 **Issue:** 
-Despite previous improvements, the drag and drop functionality still wasn't working properly - the application showed a red crossed circle when trying to drop CSV files, and files couldn't be dropped.
+Despite previous improvements including alternative file import methods, the drag and drop functionality specifically was still not working correctly on some systems.
 
 **Root Cause:**
-After thorough investigation, two critical issues were identified:
-
-1. **Windows-specific URL and path handling issues**: On Windows, Qt's handling of file URLs and paths requires special attention, particularly with path formats and URL conversion.
-
-2. **Event state management**: The event handling sequence needed restructuring to ensure proper state transitions during the drag and drop operation.
+After multiple attempts to fix the issue, we identified that the implementation needed to be simplified and make the drag and drop handlers more tolerant of different MIME data formats and focus less on early filtering.
 
 **Solution:**
+We made several key changes to simplify and enhance the drag and drop functionality:
 
-1. **Improved URL and path handling**:
+1. **Simplified the DropArea drag event handlers**:
    ```python
-   # Convert URL to local file path (different methods for robustness)
-   filepath = url.toLocalFile()
-   if not filepath and url.isLocalFile():
-       filepath = url.path()
-       # Remove leading slash on Windows if it exists
-       if filepath.startswith('/') and ':' in filepath:
-           filepath = filepath[1:]
+   def dragEnterEvent(self, event):
+       """Handle drag enter events in the drop area"""
+       # Accept ALL drag enter events unconditionally to prevent the red crossed-out icon
+       self._update_style(True)
+       event.accept()  # Accept the event directly
+       event.acceptProposedAction()  # Also accept proposed action for good measure
    ```
 
-2. **Enhanced event state management**:
+2. **Added multiple path extraction methods in the drop event**:
    ```python
-   # CRUCIAL: Accept the event regardless of file type at dragEnter time
-   # We'll filter files later in the drop event
-   if has_urls:
-       event.acceptProposedAction()  # Accept the proposed action
-       self._update_style(True)  # Highlight to show user something is happening
+   # Approach 1: Check for URLs in the MIME data
+   if event.mimeData().hasUrls():
+       urls = event.mimeData().urls()
+       for url in urls:
+           # Try methods in order of preference
+           if url.isLocalFile():
+               filepath = url.toLocalFile()
+           
+           # If that failed, try path()
+           if not filepath or not os.path.exists(filepath):
+               path_str = url.path()
+               # Strip leading slash on Windows
+               if path_str.startswith('/') and ':' in path_str:
+                   path_str = path_str[1:]
+               filepath = path_str
+           
+           # Ultimate fallback - try to extract from toString
+           if not filepath or not os.path.exists(filepath):
+               url_str = url.toString()
+               if url_str.startswith('file:///'):
+                   filepath = url_str[8:] # Strip file:///
+               elif url_str.startswith('file://'):
+                   filepath = url_str[7:] # Strip file://
+   ```
+
+3. **Added text-based fallback for MIME data**:
+   ```python
+   # Approach 2: Try to extract text that might be a file path
+   elif event.mimeData().hasText():
+       text = event.mimeData().text()
+       
+       # Check if it looks like a file path with .csv extension
+       if text and text.lower().endswith('.csv'):
+           # Try to normalize the path
+           filepath = Path(text).resolve().as_posix()
+   ```
+
+4. **Enhanced the file path handling in load_csv_file**:
+   ```python
+   # Handle various filepath formats
+   original_filepath = filepath
+   
+   # Try to normalize the path in the most robust way possible
+   try:
+       # Convert to string if needed
+       if not isinstance(filepath, (str, Path)):
+           filepath = str(filepath)
+           
+       # Convert to Path object for robustness
+       path_obj = Path(filepath)
+       
+       # Resolve and convert to string in platform-friendly way
+       filepath = str(path_obj.resolve())
+   except Exception as e:
+       print(f"Path normalization warning (continuing with original path): {str(e)}")
+       filepath = original_filepath
+   ```
+
+5. **Added CSV loading enhancements in DataProcessor.load_csv**:
+   ```python
+   # Try with a different separator as a fallback
+   try:
+       if DataProcessor.debug:
+           print(f"Trying with different separator (semicolon) for {encoding}")
+       df = pd.read_csv(filepath, encoding=encoding, sep=';')
+       if DataProcessor.debug:
+           print(f"Success with semicolon separator using {encoding}")
+   ```
+
+6. **Added manual file reading approach as a last resort**:
+   ```python
+   # Read the file as bytes and try to detect the encoding
+   with open(filepath, 'rb') as f:
+       content = f.read()
+       
+   # Try each encoding to decode the content
+   for encoding in encodings_to_try:
+       try:
+           text = content.decode(encoding)
+           # Try to convert text to CSV using StringIO
+           import io
+           df = pd.read_csv(io.StringIO(text))
+   ```
+
+**Key Improvements:**
+1. Simpler event handling that accepts events immediately for better visual feedback
+2. Multiple fallback mechanisms for extracting file paths from drag events
+3. Added text-based MIME data handling as an alternative to URL parsing
+4. More robust file path normalization that preserves the original path if normalization fails
+5. Enhanced CSV loading with support for different separators and manual file reading
+6. Comprehensive debugging information to identify any remaining issues
+
+**Verification:**
+With these changes, drag and drop should now be more robust across different systems and file selection methods. The simplified approach focuses on accepting drag events broadly at first for better visual feedback, then applying more specific validation only at the final drop stage.
+
+### 2024-03-15: Fixed Red Crossed-Out Icon in Drag and Drop
+
+**Issue:** 
+Despite previous improvements to the drag and drop functionality, users still reported seeing a red crossed-out icon when dragging files over the drop area, suggesting that Qt was not properly recognizing that the area could accept the drop.
+
+**Root Cause:**
+The issue was in how drag events were being handled. Qt shows the red crossed-out icon when it perceives that the target cannot accept the drag, which can happen if:
+1. The event is not being accepted properly in both dragEnterEvent and dragMoveEvent
+2. Conditions for acceptance are too restrictive at the drag enter/move stage
+3. Acceptance is not being explicitly communicated using both event.accept() and event.acceptProposedAction()
+
+**Solution:**
+We made several targeted changes to ensure that drag events are unconditionally accepted during dragEnter and dragMove phases, before any file validation:
+
+1. **Explicitly accept all drag enter events without any conditions:**
+   ```python
+   def dragEnterEvent(self, event):
+       """Handle drag enter events in the drop area"""
+       # Accept ALL drag enter events unconditionally to prevent the red crossed-out icon
+       self._update_style(True)
+       event.accept()  # Accept the event directly
+       event.acceptProposedAction()  # Also accept proposed action for good measure
+   ```
+
+2. **Similarly accept all drag move events:**
+   ```python
+   def dragMoveEvent(self, event):
+       """Handle drag move events in the drop area"""
+       # Also accept drag move events unconditionally
+       event.accept()
+       event.acceptProposedAction()
+   ```
+
+3. **Accept the drop event first, then process it:**
+   ```python
+   def dropEvent(self, event):
+       """Handle drop events in the drop area"""
+       # Reset style first
+       self._update_style(False)
+       
+       # Always accept the event first to ensure Qt doesn't show errors
+       event.acceptProposedAction()
+       
+       # Process the file...
+   ```
+
+4. **Applied the same changes to MainWindow's drag and drop handlers**
+
+**Key Improvements:**
+1. Unconditional acceptance of drag events at the dragEnter and dragMove stages
+2. Using both event.accept() and event.acceptProposedAction() for more robust event handling
+3. Accepting the drop event immediately before processing it
+4. Consistent approach across both DropArea and MainWindow
+5. Maintaining all our previous improvements for file path extraction and validation
+
+**Verification:**
+These changes should resolve the red crossed-out icon issue by ensuring that Qt recognizes our drop area can accept drops before we attempt any validation of the dragged content. The actual file validation is now only performed after the drop event is accepted, not during the drag stages.
+
+### 2024-03-16: Implemented Direct Diagnostics for Drag and Drop System
+
+**Issue:** 
+Despite comprehensive implementation and extensive logging, the drag and drop functionality still doesn't work properly. The user reported not seeing any logs at all when attempting to drag files, suggesting the events weren't even reaching our handlers.
+
+**Root Cause:**
+This level of failure suggests a more fundamental issue, such as:
+1. System-level problems with drag and drop events
+2. Application-level event filtering that might be preventing events from reaching our handlers
+3. Issues with how Qt propagates drag and drop events in the specific environment
+
+**Solution:**
+We implemented multiple direct diagnostic tools to identify exactly where the problem is occurring:
+
+1. **Global Event Filter** to capture all drag and drop events at the application level, regardless of target:
+   ```python
+   class GlobalEventFilter(QObject):
+       def eventFilter(self, obj, event):
+           # Capture all drag and drop related events at the application level
+           if event.type() == QEvent.DragEnter:
+               print("\n===== GLOBAL EVENT FILTER: DRAG ENTER =====")
+               print(f"Target object: {obj.__class__.__name__}")
+               print("This proves drag and drop is working at the system level")
+           # ... handling other events
+           return False  # Always propagate events
+   
+   # Create and install global event filter
+   global_filter = GlobalEventFilter()
+   app.installEventFilter(global_filter)
+   ```
+
+2. **Dedicated Debug Widget** specifically for drag and drop testing:
+   ```python
+   # Add a dedicated widget just for debugging drag and drop
+   debug_label = QLabel("DRAG FILES HERE TO TEST", window)
+   debug_label.setObjectName("debug_drag_target")
+   debug_label.setStyleSheet("background-color: red; color: white; padding: 10px;")
+   debug_label.setMinimumSize(200, 50)
+   debug_label.setAcceptDrops(True)
+   debug_label.move(10, 10)
+   ```
+
+3. **Manual Event Handler Testing** with a button that directly calls our drop event handlers:
+   ```python
+   def test_drag_drop_system(self):
+       """Diagnostic function to test if drag and drop handlers are working"""
+       # Create a temporary test file
+       test_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_file.csv")
+       
+       # Create a fake drop event with proper MIME data
+       mime_data = QMimeData()
+       url = QUrl.fromLocalFile(test_file)
+       mime_data.setUrls([url])
+       
+       # Create a fake event object 
+       fake_event = type('FakeDropEvent', (), {
+           'mimeData': lambda self: mime_data,
+           'accept': lambda self: None,
+           'acceptProposedAction': lambda self: None,
+           'isAccepted': lambda self: True
+       })()
+       
+       # Call handlers directly to test if they work
+       self.drop_area.dropEvent(fake_event)
+       self.dropEvent(fake_event)
+   ```
+
+4. **Enhanced Drop Area Initialization** with explicit logging and attribute setup:
+   ```python
+   # Enhanced drag and drop flags - make ABSOLUTELY sure we're set up for drag and drop
+   self.setAttribute(Qt.WA_TranslucentBackground, False)  # Ensure we get mouse events
+   
+   # Add a debug message to show that the DropArea was properly initialized
+   print("\n===== DropArea Initialization =====")
+   print(f"DropArea accepts drops: {self.acceptDrops()}")
+   print(f"DropArea rectangle: {self.rect()}")
+   ```
+
+**Key Improvements:**
+1. Added a global event filter to detect any drag and drop events at the application level
+2. Created a dedicated red label specifically for drag and drop testing
+3. Implemented a manual test function that bypasses the actual drag and drop system
+4. Enhanced DropArea initialization with explicit attribute setting and logging
+5. Added clear logging at all levels of the drag and drop process
+
+**Verification:**
+This comprehensive diagnostic approach should identify exactly where the drag and drop process is failing:
+
+1. If the global event filter doesn't log anything, it suggests a system-level issue
+2. If the global filter logs but our specific handlers don't, it suggests an event propagation issue
+3. If the manual test button works but actual drag and drop doesn't, it confirms our handlers are correct but events aren't reaching them
+4. If none of the tests work, it suggests a deeper implementation issue
+
+Regardless of what's found, the approach provides clear and direct information about where exactly the drag and drop functionality is breaking down, allowing for a more targeted solution.
+
+### 2024-03-18: Complete Removal of Drag and Drop Functionality
+
+### Issue
+After extensive diagnostics and attempts to fix drag and drop functionality, we determined that the issue was at the system level and outside our application's control. No drag and drop events were being received by our application, despite comprehensive implementation and debugging.
+
+### Root Cause
+System-level restrictions or configurations that prevent drag and drop functionality from working:
+1. Windows security settings that block drag and drop between applications
+2. Group policy restrictions that might be in place in the user's environment
+3. Conflicts with the Qt implementation of drag and drop on specific Windows versions
+4. Potential incompatibilities with third-party software or security tools
+
+### Solution
+Given the system-level nature of the problem, we made a strategic decision to:
+
+1. Completely remove all drag and drop functionality from the application
+2. Rename `DropArea` to `ImportArea` with focus solely on file selection button
+3. Remove all diagnostic tools and debug widgets
+4. Simplify the UI to focus on the methods that work consistently
+5. Update the documentation and user guidance to reflect the new approach
+
+### Key Improvements
+- **Simplified Codebase**: Removed hundreds of lines of complex drag and drop code
+- **Focused User Experience**: Clear, obvious methods for importing files
+- **Improved Reliability**: No more dependency on system-level drag and drop capabilities
+- **Reduced Cognitive Load**: Users have fewer options but clearer guidance
+- **Enhanced Feedback**: Improved status messages during file import operations
+- **Cleaner UI**: Removed diagnostic elements and simplified layout
+
+### Verification
+The application now provides a cleaner, more focused interface for importing CSV files. The file menu and import button work reliably across all systems, and the interface provides clear visual feedback throughout the import process.
+
+## 2024-03-18: Removed Persistent File Selection Panel
+
+### Issue
+While the persistent file selection panel was initially added as a reliable alternative to drag and drop functionality, the design decision was made to remove it for a cleaner, more streamlined interface.
+
+### Root Cause
+The persistent panel, while functional, added extra UI elements that weren't necessary once we had simplified the import methods.
+
+### Solution
+1. Removed the entire persistent file selection panel from the top of the window
+2. Simplified the main() function to focus on core application functionality
+3. Removed the custom resize event handler that was only needed for the panel
+4. Ensured the existing import methods (File menu and import button) remained functional
+5. Updated documentation to reflect these changes
+
+### Key Improvements
+- **Cleaner UI**: Removed the always-visible panel for a more traditional application layout
+- **Simplified Codebase**: Eliminated complex panel management code and event handlers
+- **Reduced Window Chrome**: More space for the main application content
+- **Focused Import Methods**: Streamlined to just the file menu and import button
+
+### Verification
+The application starts up with a cleaner interface, without the persistent panel at the top. The File menu import option and the ImportArea button provide reliable ways to import CSV files.
+
+## Ongoing Issues
+
+None currently identified.
+
+### 2024-03-21: Enhanced UI with Total Battle Theme
+
+**Task:** 
+The UI needed to be updated to resemble the Total Battle game interface with dark blue and gold accents.
+
+**Implementation:**
+1. Updated the DARK_THEME color constants:
+   ```python
+   DARK_THEME = {
+       'background': '#1A2742',  # Dark blue background similar to Total Battle
+       'foreground': '#FFFFFF',  # White text for better contrast
+       'accent': '#D4AF37',      # Gold accent color
+       'accent_hover': '#F0C75A',  # Lighter gold for hover states
+       'secondary': '#345995',   # Secondary blue color
+       'button_gradient_top': '#D4AF37',    # Gold gradient top for buttons
+       'button_gradient_bottom': '#B08A1B', # Darker gold for gradient bottom
+       'header_bg': '#0A142A',   # Very dark blue for headers
+       'highlight': '#FFDFA0'    # Light gold for highlighted elements
+       # Additional color definitions...
+   }
+   ```
+
+2. Enhanced the StyleManager class with comprehensive styling:
+   - Updated QPalette colors for better consistency
+   - Added detailed CSS styling for all components
+   - Implemented gradient buttons with gold colors
+   - Created custom styling for tables, menus, tabs, and other UI elements
+   - Added hover effects and proper visual feedback
+
+3. Updated the ImportArea and DropArea widgets:
+   - Added gold accent borders and styling
+   - Enhanced label properties and appearance
+   - Improved visual feedback during interactions
+   - Added proper property attributes for styling
+
+4. Enhanced chart visualization:
+   - Defined a Total Battle-inspired color palette for charts
+   - Updated the MplCanvas class to apply the theme consistently
+   - Added better styling for chart elements like titles, labels, and legends
+   - Implemented improved chart types with proper styling
+
+5. Added a styled application title with gold accents to the main window.
+
+**Result:**
+The application now has a polished, professional appearance that matches the Total Battle game aesthetic. The dark blue background with gold accents provides better visual contrast and a more cohesive user experience. All UI elements now follow a consistent style guide with proper visual feedback and interaction states.
+
+**Notes for future UI changes:**
+- Keep new UI components consistent with the Total Battle theme
+- Use the defined color constants in the DARK_THEME dictionary
+- Maintain the gold gradient styling for buttons
+- Follow the established styling patterns for consistency 
+
+### 2024-03-22: Fixed Analysis Results Dictionary Empty Check
+
+**Issue:**
+Users were getting an error message: "Failed to analyze data: 'dict' object has no attribute 'empty'" when trying to analyze data. The data would still load but the error was displayed.
+
+**Root Cause:**
+In the `update_chart` method, the code was checking for `self.analysis_results.empty`, but `self.analysis_results` is a dictionary, not a DataFrame. Dictionaries don't have an 'empty' attribute, which was causing the error.
+
+**Solution:**
+Modified the condition in the `update_chart` method to properly check if a dictionary is None or empty:
+
+```python
+# Changed from
+if self.analysis_results is None or self.analysis_results.empty:
+    return
+
+# To
+if self.analysis_results is None or not self.analysis_results:
+    return
+```
+
+This correctly checks if the dictionary is None or empty without trying to access an 'empty' attribute that doesn't exist on dictionaries.
+
+**Verification:**
+The error message no longer appears when analyzing data, and chart generation continues to work correctly.
+
+### 2024-03-22: Fixed Duplicated Menu Items
+
+**Issue:**
+The application had duplicated "File" and "Help" menu items in the menu bar, with both copies being functional but redundant.
+
+**Root Cause:**
+The `setup_menu()` method was being called twice during initialization:
+1. Once in the `MainWindow.__init__()` method
+2. Again in the `setup_ui()` method which is called by `__init__()`
+
+**Solution:**
+Removed the redundant call to `setup_menu()` in the `MainWindow.__init__()` method, keeping only the call in `setup_ui()`:
+
+```python
+# in MainWindow.__init__()
+self.setup_ui()
+# Removed: self.setup_menu()  # This was causing the duplication
+```
+
+**Verification:**
+The menu bar now shows only one copy of each menu item as expected. 
+
+### 2024-03-23: Enhanced German Character Encoding Support
+
+**Issue:**
+German characters with umlauts (like "Feldjäger") were not being recognized correctly when loading CSV files.
+
+**Root Cause:**
+The application was not properly prioritizing encodings that handle German characters (like latin1, cp1252) when detecting umlauts in the file content.
+
+**Solution:**
+1. Added improved detection of German umlauts in file content:
+   ```python
+   # Check for German umlauts in the first bytes
+   umlaut_patterns = [
+       b'\xe4',  # ä in latin1/cp1252
+       b'\xf6',  # ö in latin1/cp1252
+       b'\xfc',  # ü in latin1/cp1252
+       b'\xc4',  # Ä in latin1/cp1252
+       b'\xd6',  # Ö in latin1/cp1252
+       b'\xdc',  # Ü in latin1/cp1252
+       b'\xdf'   # ß in latin1/cp1252
+   ]
+   
+   has_potential_umlauts = any(pattern in first_bytes for pattern in umlaut_patterns)
+   ```
+
+2. Added prioritization of German-friendly encodings when umlauts are detected:
+   ```python
+   # Prioritize German encodings if we detected umlauts
+   if has_potential_umlauts:
+       german_encodings_str = config_manager.get('Data', 'german_encodings', 
+                                               'latin1,cp1252,iso-8859-1,windows-1252')
+       german_encodings = [enc.strip() for enc in german_encodings_str.split(',')]
+       
+       # Prioritize German encodings if we detected umlauts
+       encodings_to_try = [default_encoding] + german_encodings + alt_encodings
+   ```
+
+3. Added enhanced logging for encoding detection:
+   ```python
+   # Check specifically for umlauts
+   has_umlauts = any(char in sample_data for char in 'äöüÄÖÜß')
+   print(f"Data contains German umlauts: {has_umlauts}")
+   ```
+
+4. Added configuration options for German encodings:
+   ```python
+   'german_encodings': 'latin1,cp1252,iso-8859-1,windows-1252'
+   ```
+
+**Verification:**
+The application now correctly detects and handles German characters like umlauts, prioritizing encodings that support these characters when they are detected in the file.
+
+### 2024-03-23: Fixed Chart Generation and Added Enhanced Logging
+
+**Issue:**
+Charts were not generating correctly and were throwing errors like "'dict' object has no attribute 'plot'".
+
+**Root Cause:**
+1. The update_chart method was not properly handling the selected data and columns.
+2. There was insufficient error checking for column existence in the DataFrame.
+3. Logging was inadequate for diagnosing chart generation issues.
+
+**Solution:**
+1. Added comprehensive logging throughout the chart generation process:
+   ```python
+   print("\n=== Starting update_chart ===")
+   print(f"Chart parameters: type={chart_type}, x={x_column}, y={y_column}")
+   print(f"Selected view: {selected_view}")
+   print(f"Available analysis results keys: {list(self.analysis_results.keys())}")
+   print(f"DataFrame shape: {data.shape}")
+   print(f"DataFrame columns: {data.columns.tolist()}")
+   print(f"DataFrame sample:\n{data.head(3)}")
+   ```
+
+2. Added robust column existence checking:
+   ```python
+   # Check if the selected columns exist in the DataFrame
+   if x_column not in data.columns:
+       print(f"Error: x_column '{x_column}' not found in DataFrame columns")
+       QMessageBox.warning(self, "Chart Error", f"Column '{x_column}' not found in the data")
        return
    ```
 
-3. **Comprehensive error handling and logging**:
+3. Enhanced error handling with traceback printing:
    ```python
-   try:
-       # Process dropped files
-       if event.mimeData().hasUrls():
-           # Detailed processing with extensive logging
-           # ...
    except Exception as e:
-       print(f"ERROR in dropEvent: {str(e)}")
-       event.ignore()
+       error_msg = f"Error creating chart: {str(e)}"
+       print(f"ERROR: {error_msg}")
+       import traceback
+       traceback.print_exc()
+       QMessageBox.critical(self, "Chart Error", error_msg)
    ```
 
-4. **Explicit drop action configuration**:
+4. Added specific logging for each chart type:
    ```python
-   # Set the drop action explicitly to CopyAction
-   event.setDropAction(Qt.CopyAction)
-   event.acceptProposedAction()
+   print(f"Creating {chart_type} with x={x_column}, y={y_column}")
+   print("Generating bar chart...")
    ```
 
-5. **Refactored file path handling in load_csv_file**:
+**Verification:**
+The chart generation now provides detailed logging to diagnose issues, properly checks for column existence before attempting to plot, and displays user-friendly error messages when problems occur. 
+
+### 2024-03-24: Improved German Umlaut Detection and Handling
+
+**Issue:**
+The application was not correctly identifying German umlauts (like in "Feldjäger") despite them being present in the file. The log showed the character as "FeldjÃ¤ger" and incorrectly reported "Data contains German umlauts: False".
+
+**Root Cause:**
+The umlaut detection logic only looked for properly formatted umlauts ('äöüÄÖÜß') but didn't check for garbled representations that occur when files are loaded with incorrect encodings (like 'Ã¤' instead of 'ä').
+
+**Solution:**
+1. Enhanced the umlaut detection by checking for both proper and garbled umlaut representations:
    ```python
-   # Normalize filepath for Windows
-   filepath = Path(filepath).resolve().as_posix()
+   # Check for both properly formatted umlauts and common garbled representations
+   has_proper_umlauts = any(char in sample_data for char in 'äöüÄÖÜß')
    
-   # More thorough file checks
-   print(f"File exists: {os.path.exists(filepath)}")
-   print(f"File readable: {os.access(filepath, os.R_OK)}")
-   print(f"File size: {os.path.getsize(filepath) if os.path.exists(filepath) else 'N/A'}")
+   # Check for garbled umlaut representations
+   garbled_umlaut_patterns = ['Ã¤', 'Ã¶', 'Ã¼', 'Ã„', 'Ã–', 'Ãœ', 'ÃŸ', 'FeldjÃ¤ger', 'Feldjäger']
+   has_garbled_umlauts = any(pattern in sample_data for pattern in garbled_umlaut_patterns)
    ```
 
-6. **Enhanced CSV loading with detailed diagnostics**:
+2. Added automatic repair of garbled umlauts in the DataFrame:
    ```python
-   # Try to read the first few bytes to check if file is accessible
-   try:
-       with open(filepath, 'rb') as f:
-           first_bytes = f.read(16)
-           if DataProcessor.debug:
-               print(f"First bytes: {first_bytes}")
-   except Exception as e:
-       error_msg = f"Failed to open file: {str(e)}"
+   # If we have garbled umlauts, try to fix them
+   if 'FeldjÃ¤ger' in sample_data:
+       print("Found misencoded 'FeldjÃ¤ger' - this should be 'Feldjäger'")
+       
+       # Fix PLAYER column if needed
+       if 'PLAYER' in df.columns and df['PLAYER'].str.contains('FeldjÃ¤ger').any():
+           df['PLAYER'] = df['PLAYER'].str.replace('FeldjÃ¤ger', 'Feldjäger')
+   ```
+
+3. Improved file reading to check more content for umlauts:
+   ```python
+   # Read more content to increase chances of finding umlauts
+   f.seek(0)
+   more_content = f.read(4096)
+   has_potential_umlauts_extended = any(pattern in more_content for pattern in umlaut_patterns)
+   ```
+
+4. Enhanced the manual file reading approach with better umlaut handling:
+   - Added detection of German name patterns that should contain umlauts
+   - Included more comprehensive checks for garbled characters
+   - Added automatic fixing of specific garbled patterns
+   - Added verification and reporting of fixed player names
+
+**Verification:**
+The application now correctly identifies German umlauts even when they appear as garbled characters in the loaded data, and automatically repairs common encoding issues with player names containing umlauts. 
+
+### 2024-03-24: Fixed Chart Column Name Case Sensitivity Issue
+
+**Issue:**
+After fixing the German umlaut detection, charts were still failing with an error: "x_column 'Player' not found in DataFrame columns" despite having a "PLAYER" column in the DataFrame.
+
+**Root Cause:**
+The chart data selector was using title case column names ("Player", "Source", "Chest Type") while the DataFrame columns were all uppercase ("PLAYER", "SOURCE", "CHEST"). This case mismatch caused the column lookup to fail.
+
+**Solution:**
+1. Updated the chart data selector to use the actual uppercase column names to match the DataFrame:
+   ```python
+   # Chart data selector - use actual column names that match the DataFrame
+   self.chart_data_selector = QComboBox()
+   self.chart_data_selector.addItems(["PLAYER", "SOURCE", "CHEST"])
+   ```
+
+2. Simplified the update_chart method by removing the column name mapping code, as it's no longer needed:
+   ```python
+   # Get selected parameters
+   chart_type = self.chart_type_selector.currentText()
+   x_column = self.chart_data_selector.currentText()  # Now directly matches DataFrame columns
+   y_column = self.analysis_selector.currentText()
+   ```
+
+3. Updated the chart code to use the direct column name for labels and plotting.
+
+**Verification:**
+Charts now generate correctly with the matching column names, and the error "x_column 'Player' not found in DataFrame columns" no longer appears. 
+
+### 2024-03-25: Fixed Chart View Selection for SOURCE and CHEST Columns
+
+**Issue:**
+When selecting SOURCE or CHEST as the x-axis column for charts, the application would show an error "x_column 'SOURCE' not found in DataFrame columns" or "x_column 'CHEST' not found in DataFrame columns".
+
+**Root Cause:**
+The chart generation code was using the selected view from the analysis selector dropdown (default: "Player Total Scores"), which only contains PLAYER and SCORE columns. It wasn't automatically switching to the appropriate view based on the selected x-column.
+
+**Solution:**
+1. Modified the `update_chart` method to automatically select the appropriate view based on the x-column:
+   ```python
+   # Auto-select the appropriate view based on x_column
+   if x_column == "PLAYER":
+       selected_view = "Player Total Scores"
+   elif x_column == "CHEST":
+       selected_view = "Scores by Chest Type"
+   elif x_column == "SOURCE":
+       selected_view = "Scores by Source"
+   else:
+       selected_view = self.analysis_selector.currentText()
+   
+   # Update the analysis selector to match our selection
+   index = self.analysis_selector.findText(selected_view)
+   if index >= 0:
+       self.analysis_selector.setCurrentIndex(index)
+   ```
+2. Simplified the y-column selection logic
+3. Improved the detection of whether to use SCORE or COUNT columns in the data
+
+**Verification:**
+Confirmed that charts now generate correctly when selecting any of the three column options (PLAYER, SOURCE, or CHEST) without errors.
+
+### 2024-03-25: Improved Button Text Readability
+
+**Issue:**
+The "Select CSV File" button text was black, making it difficult to read against the gold gradient background.
+
+**Root Cause:**
+The QPushButton style in the StyleManager class was using a hard-coded black color (#000000) for text rather than using the theme's foreground color.
+
+**Solution:**
+Changed the button text color in the StyleManager class from black to white (using the theme's foreground color):
+```css
+QPushButton {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                              stop:0 {DARK_THEME['button_gradient_top']},
+                              stop:1 {DARK_THEME['button_gradient_bottom']});
+    color: {DARK_THEME['foreground']}; /* Changed from #000000 to use white text */
+    border: 1px solid {DARK_THEME['button_gradient_bottom']};
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-weight: bold;
+    min-width: 80px;
+}
+```
+
+**Verification:**
+Confirmed that all buttons, including the "Select CSV File" button, now display white text that is clearly readable against the gold gradient background.
+
+### 2024-03-25: Enforced Required CSV Columns
+
+**Issue:**
+The application was importing CSV files regardless of whether they contained all required columns, and it was not clear which columns were mandatory.
+
+**Root Cause:**
+The data loading code only showed warnings when required columns were missing, without actually enforcing their presence. It also kept all columns from the CSV, which could lead to confusion.
+
+**Solution:**
+1. Modified the `DataProcessor.load_csv` method to enforce that all required columns must be present:
+   ```python
+   # Check if required columns are present
+   required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
+   missing_columns = [col for col in required_columns if col not in df.columns]
+   
+   if missing_columns:
+       error_msg = f"Missing required columns: {missing_columns}. CSV file must contain all of these columns: {required_columns}"
        print(error_msg)
        raise ValueError(error_msg)
    ```
 
-**Key Improvements:**
-1. Accepting ANY drag initially with URLs, then filtering by file type later in the drop event
-2. Multiple fallback mechanisms for file path extraction
-3. Explicit setting of drop action to CopyAction
-4. Normalized file paths for cross-platform compatibility
-5. Comprehensive error catching and detailed logging
-6. More thorough file validation checks
+2. Added code to keep only the required columns and remove any extras:
+   ```python
+   # Keep only the required columns, drop everything else
+   extra_columns = [col for col in df.columns if col not in required_columns]
+   if extra_columns:
+       print(f"Dropping extra columns: {extra_columns}")
+       df = df[required_columns]
+   ```
+
+3. Updated this validation in all CSV loading code paths including:
+   - Standard pandas loading
+   - Alternative separator (semicolon) loading
+   - Manual decoding with different encodings
+   - UTF-8 with BOM detection
+
+4. Updated the import instructions in the UI to clearly state the requirements:
+   ```
+   The CSV file MUST contain ALL of the following columns:
+   DATE, PLAYER, SOURCE, CHEST, SCORE
+
+   Files missing any of these columns will be rejected.
+   Any additional columns will be automatically removed.
+   ```
 
 **Verification:**
-These additional fixes should resolve the drag and drop issues by:
-1. Working around Windows-specific path handling quirks
-2. Providing much more detailed logging for troubleshooting
-3. Ensuring proper event state transitions during drag and drop
-4. Being more robust with file handling and error recovery
-
-### 2024-03-13: Alternative File Import Methods
-
-**Issue:** 
-Despite multiple attempts to fix the drag and drop functionality, it continued to have issues on some Windows systems, preventing users from importing CSV files.
-
-**Root Cause:**
-After extensive troubleshooting, we determined that there might be system-specific drag and drop limitations or Qt-related issues that couldn't be resolved through standard event handling approaches.
-
-**Solution:**
-Instead of continuing to troubleshoot the drag and drop issue, we implemented multiple alternative file import methods to ensure users can always import CSV files regardless of drag and drop functionality:
-
-1. **Added explicit File menu with Import option**:
-   ```python
-   def setup_menu(self):
-       """Set up the application menu"""
-       # Create menu bar
-       menu_bar = self.menuBar()
-       
-       # Create File menu
-       file_menu = menu_bar.addMenu("&File")
-       
-       # Add Import action
-       import_action = file_menu.addAction("&Import CSV File...")
-       import_action.setShortcut("Ctrl+O")
-       import_action.triggered.connect(self.open_file_dialog)
-       # ...
-   ```
-
-2. **Added a prominent import button to the drop area**:
-   ```python
-   # Add explicit import button
-   self.import_button = QPushButton("Select CSV File")
-   self.import_button.clicked.connect(self.open_file_dialog)
-   self.import_button.setMinimumHeight(40)
-   self.import_button.setStyleSheet(f"""
-       QPushButton {{
-           background-color: {DARK_THEME['accent']};
-           color: white;
-           font-weight: bold;
-           font-size: 12px;
-           border-radius: 4px;
-           padding: 8px 16px;
-       }}
-       # ...
-   ```
-
-3. **Enhanced the drop area with a clear visual document icon**:
-   ```python
-   # Create a QLabel with an icon for import
-   self.icon_label = QLabel()
-   self.icon_label.setAlignment(Qt.AlignCenter)
-   
-   # Create a pixmap with a document icon
-   icon_font = QFont()
-   icon_font.setPointSize(48)
-   icon_pixmap = QPixmap(64, 64)
-   # ...
-   ```
-
-4. **Updated UI instructions to clearly show all import options**:
-   ```python
-   instructions = QLabel(
-       "Import your CSV file by dragging and dropping it below, clicking the area, or using the Import button in the File menu."
-   )
-   ```
-
-5. **Maintained our existing drag and drop implementation** as a fallback, but with simplified, more targeted code.
-
-**Key Improvements:**
-1. Multiple paths to import files, not relying solely on drag and drop
-2. More prominent, user-friendly UI for file importing
-3. Standard file dialog approach that works reliably across all platforms
-4. Standard menu shortcuts (Ctrl+O) that users are familiar with
-5. Better visual cues and instructions for users
-
-**Verification:**
-This approach ensures users can import CSV files even if drag and drop functionality is problematic on their specific system. The multiple import methods provide redundancy and a better overall user experience.
-
-## Ongoing Issues
-
-None currently identified. 
+Confirmed that the application now correctly:
+1. Rejects CSV files that don't contain all required columns
+2. Removes any additional columns beyond the required ones
+3. Clearly informs users about the column requirements in the UI

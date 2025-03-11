@@ -2,6 +2,8 @@ import sys
 import os
 import csv
 import pandas as pd
+import numpy as np
+import configparser
 from datetime import datetime
 from pathlib import Path
 import matplotlib.pyplot as plt
@@ -10,15 +12,18 @@ import matplotlib
 matplotlib.use('QtAgg')  # Use the generic Qt backend that works with PySide6
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import types  # Add this import for method binding
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QTableView, QPushButton, QTabWidget, QLabel, QFileDialog,
-    QComboBox, QGroupBox, QSplitter, QMessageBox, QFrame, QHeaderView
+    QComboBox, QGroupBox, QSplitter, QMessageBox, QFrame, QHeaderView,
+    QLineEdit
 )
 from PySide6.QtCore import (
     Qt, QAbstractTableModel, QModelIndex, Signal, QMimeData, 
-    QUrl, QSize, Slot, QSortFilterProxyModel
+    QUrl, QSize, Slot, QSortFilterProxyModel, QObject, QEvent, QTimer,
+    QSettings, QStandardPaths
 )
 from PySide6.QtGui import (
     QStandardItemModel, QStandardItem, QDropEvent, QDragEnterEvent,
@@ -27,22 +32,190 @@ from PySide6.QtGui import (
 
 # Style constants
 DARK_THEME = {
-    'background': '#2D2D30',
-    'foreground': '#CCCCCC',
-    'accent': '#3C7B8C',
-    'accent_hover': '#4C8B9C',
-    'secondary': '#6C567B',
-    'success': '#56A64B',
-    'error': '#A6564B',
-    'card_bg': '#252526',
-    'border': '#3F3F46',
-    'text_disabled': '#666666'
+    'background': '#1A2742',  # Dark blue background similar to Total Battle
+    'foreground': '#FFFFFF',  # White text for better contrast
+    'accent': '#D4AF37',      # Gold accent color
+    'accent_hover': '#F0C75A',  # Lighter gold for hover states
+    'secondary': '#345995',   # Secondary blue color
+    'success': '#56A64B',     # Keep green for success indicators
+    'error': '#A6564B',       # Keep red for error indicators
+    'card_bg': '#0D1A33',     # Darker blue for card backgrounds
+    'border': '#2A3F5F',      # Medium blue for borders
+    'text_disabled': '#8899AA', # Bluish gray for disabled text
+    'button_gradient_top': '#D4AF37',    # Gold gradient top for buttons
+    'button_gradient_bottom': '#B08A1B', # Darker gold for gradient bottom
+    'header_bg': '#0A142A',   # Very dark blue for headers
+    'highlight': '#FFDFA0'    # Light gold for highlighted elements
 }
+
+class ConfigManager:
+    """
+    Manages application configuration settings using a config.ini file.
+    
+    This class handles reading and writing application settings to a configuration file,
+    with support for default values and automatic creation of the configuration file
+    if it doesn't exist.
+    """
+    
+    def __init__(self, app_name="TotalBattleAnalyzer"):
+        """
+        Initialize the ConfigManager with the specified app name.
+        
+        Args:
+            app_name (str): The name of the application for configuration purposes.
+        """
+        self.app_name = app_name
+        self.config = configparser.ConfigParser()
+        self.config_file = Path("config.ini")
+        
+        # Create the application directory structure if it doesn't exist
+        self.app_dir = Path.cwd()
+        self.import_dir = self.app_dir / "import"
+        self.export_dir = self.app_dir / "export"
+        
+        # Create directories if they don't exist
+        self.import_dir.mkdir(exist_ok=True)
+        self.export_dir.mkdir(exist_ok=True)
+        
+        # Default settings
+        self.default_settings = {
+            'General': {
+                'theme': 'dark',
+                'import_directory': str(self.import_dir),
+                'export_directory': str(self.export_dir),
+                'last_used_directory': str(self.import_dir),
+                'window_width': '1200',
+                'window_height': '800'
+            },
+            'Charts': {
+                'default_chart_type': 'Bar Chart',
+                'show_grid': 'True',
+                'chart_title_size': '14'
+            },
+            'Data': {
+                'default_encoding': 'utf-8',
+                'alternative_encodings': 'latin1,iso-8859-1,cp1252,windows-1252,utf-8-sig',
+                'csv_separator': ',',
+                'alternative_separator': ';',
+                'german_encodings': 'latin1,cp1252,iso-8859-1,windows-1252'
+            }
+        }
+        
+        # Load or create configuration
+        self.load_config()
+    
+    def load_config(self):
+        """
+        Load the configuration from the config file.
+        If the file doesn't exist, create it with default settings.
+        """
+        # Check if config file exists
+        if self.config_file.exists():
+            try:
+                self.config.read(self.config_file)
+                # Validate sections and options
+                self._validate_config()
+            except Exception as e:
+                print(f"Error loading configuration: {str(e)}")
+                # If there's an error, create a new config with defaults
+                self._create_default_config()
+        else:
+            # Create a new config file with defaults
+            self._create_default_config()
+    
+    def _validate_config(self):
+        """Validate the loaded configuration and add any missing sections or options."""
+        for section, options in self.default_settings.items():
+            if not self.config.has_section(section):
+                self.config.add_section(section)
+            
+            for option, value in options.items():
+                if not self.config.has_option(section, option):
+                    self.config.set(section, option, value)
+        
+        # Save any added defaults
+        self.save_config()
+    
+    def _create_default_config(self):
+        """Create a new configuration file with default settings."""
+        for section, options in self.default_settings.items():
+            if not self.config.has_section(section):
+                self.config.add_section(section)
+            
+            for option, value in options.items():
+                self.config.set(section, option, value)
+        
+        self.save_config()
+    
+    def save_config(self):
+        """Save the current configuration to the config file."""
+        try:
+            with open(self.config_file, 'w') as file:
+                self.config.write(file)
+        except Exception as e:
+            print(f"Error saving configuration: {str(e)}")
+    
+    def get(self, section, option, fallback=None):
+        """
+        Get a configuration value.
+        
+        Args:
+            section (str): The configuration section.
+            option (str): The option name within the section.
+            fallback (Any): The value to return if the option doesn't exist.
+            
+        Returns:
+            str: The configuration value, or fallback if not found.
+        """
+        return self.config.get(section, option, fallback=fallback)
+    
+    def get_int(self, section, option, fallback=0):
+        """Get an integer configuration value."""
+        return self.config.getint(section, option, fallback=fallback)
+    
+    def get_float(self, section, option, fallback=0.0):
+        """Get a float configuration value."""
+        return self.config.getfloat(section, option, fallback=fallback)
+    
+    def get_boolean(self, section, option, fallback=False):
+        """Get a boolean configuration value."""
+        return self.config.getboolean(section, option, fallback=fallback)
+    
+    def set(self, section, option, value):
+        """
+        Set a configuration value.
+        
+        Args:
+            section (str): The configuration section.
+            option (str): The option name within the section.
+            value (Any): The value to set (will be converted to string).
+        """
+        if not self.config.has_section(section):
+            self.config.add_section(section)
+        
+        self.config.set(section, option, str(value))
+        self.save_config()
+    
+    def get_import_directory(self):
+        """Get the configured import directory path."""
+        return self.get('General', 'import_directory', str(self.import_dir))
+    
+    def get_export_directory(self):
+        """Get the configured export directory path."""
+        return self.get('General', 'export_directory', str(self.export_dir))
+    
+    def get_last_used_directory(self):
+        """Get the last used directory path."""
+        return self.get('General', 'last_used_directory', str(self.import_dir))
+    
+    def set_last_used_directory(self, directory):
+        """Set the last used directory path."""
+        self.set('General', 'last_used_directory', str(directory))
 
 class StyleManager:
     @staticmethod
     def apply_dark_theme(app):
-        """Apply dark theme to the entire application"""
+        """Apply Total Battle-inspired theme to the entire application"""
         dark_palette = QPalette()
         
         # Set colors
@@ -53,92 +226,282 @@ class StyleManager:
         dark_palette.setColor(QPalette.ToolTipBase, QColor(DARK_THEME['foreground']))
         dark_palette.setColor(QPalette.ToolTipText, QColor(DARK_THEME['foreground']))
         dark_palette.setColor(QPalette.Text, QColor(DARK_THEME['foreground']))
-        dark_palette.setColor(QPalette.Button, QColor(DARK_THEME['background']))
+        dark_palette.setColor(QPalette.Button, QColor(DARK_THEME['card_bg']))
         dark_palette.setColor(QPalette.ButtonText, QColor(DARK_THEME['foreground']))
-        dark_palette.setColor(QPalette.BrightText, Qt.red)
         dark_palette.setColor(QPalette.Link, QColor(DARK_THEME['accent']))
         dark_palette.setColor(QPalette.Highlight, QColor(DARK_THEME['accent']))
         dark_palette.setColor(QPalette.HighlightedText, QColor(DARK_THEME['foreground']))
         
+        # Apply theme to the application
         app.setPalette(dark_palette)
         
-        # Set stylesheet for detailed styling
+        # Apply stylesheet for custom styling
         app.setStyleSheet(f"""
-            QMainWindow, QDialog {{
+            /* Global Styles */
+            QWidget {{
                 background-color: {DARK_THEME['background']};
                 color: {DARK_THEME['foreground']};
+                font-family: 'Segoe UI', Arial, sans-serif;
             }}
+            
+            /* Main Window */
+            QMainWindow {{
+                background-color: {DARK_THEME['background']};
+                border: none;
+            }}
+            
+            /* Menu Bar */
+            QMenuBar {{
+                background-color: {DARK_THEME['header_bg']};
+                color: {DARK_THEME['foreground']};
+                border-bottom: 1px solid {DARK_THEME['border']};
+                padding: 4px;
+            }}
+            
+            QMenuBar::item {{
+                background-color: transparent;
+                padding: 6px 12px;
+                border-radius: 4px;
+            }}
+            
+            QMenuBar::item:selected {{
+                background-color: {DARK_THEME['secondary']};
+            }}
+            
+            QMenu {{
+                background-color: {DARK_THEME['card_bg']};
+                border: 1px solid {DARK_THEME['border']};
+                padding: 4px;
+            }}
+            
+            QMenu::item {{
+                padding: 6px 24px 6px 12px;
+                border-radius: 4px;
+            }}
+            
+            QMenu::item:selected {{
+                background-color: {DARK_THEME['secondary']};
+            }}
+            
+            /* Tab Widget */
             QTabWidget::pane {{
                 border: 1px solid {DARK_THEME['border']};
                 background-color: {DARK_THEME['card_bg']};
+                border-radius: 4px;
             }}
+            
             QTabBar::tab {{
-                background-color: {DARK_THEME['background']};
+                background-color: {DARK_THEME['card_bg']};
                 color: {DARK_THEME['foreground']};
                 padding: 8px 16px;
-                border: 1px solid {DARK_THEME['border']};
-                border-bottom: none;
+                margin-right: 2px;
                 border-top-left-radius: 4px;
                 border-top-right-radius: 4px;
+                border-bottom: 2px solid transparent;
             }}
+            
             QTabBar::tab:selected {{
-                background-color: {DARK_THEME['card_bg']};
+                background-color: {DARK_THEME['background']};
                 border-bottom: 2px solid {DARK_THEME['accent']};
             }}
+            
+            QTabBar::tab:hover:!selected {{
+                background-color: {DARK_THEME['header_bg']};
+                border-bottom: 2px solid {DARK_THEME['accent_hover']};
+            }}
+            
+            /* Push Buttons */
             QPushButton {{
-                background-color: {DARK_THEME['accent']};
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                          stop:0 {DARK_THEME['button_gradient_top']},
+                                          stop:1 {DARK_THEME['button_gradient_bottom']});
                 color: {DARK_THEME['foreground']};
-                border: none;
-                padding: 8px 16px;
+                border: 1px solid {DARK_THEME['button_gradient_bottom']};
                 border-radius: 4px;
+                padding: 6px 12px;
+                font-weight: bold;
+                min-width: 80px;
             }}
+            
             QPushButton:hover {{
-                background-color: {DARK_THEME['accent_hover']};
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                                          stop:0 {DARK_THEME['accent_hover']},
+                                          stop:1 {DARK_THEME['accent']});
             }}
+            
+            QPushButton:pressed {{
+                background: {DARK_THEME['button_gradient_bottom']};
+            }}
+            
             QPushButton:disabled {{
-                background-color: {DARK_THEME['background']};
-                color: {DARK_THEME['text_disabled']};
+                background: #666666;
+                color: #333333;
+                border: 1px solid #555555;
             }}
-            QTableView {{
-                background-color: {DARK_THEME['card_bg']};
-                color: {DARK_THEME['foreground']};
-                gridline-color: {DARK_THEME['border']};
-                border: 1px solid {DARK_THEME['border']};
-                border-radius: 4px;
-                selection-background-color: {DARK_THEME['accent']};
-            }}
-            QHeaderView::section {{
-                background-color: {DARK_THEME['background']};
-                color: {DARK_THEME['foreground']};
-                padding: 6px;
-                border: 1px solid {DARK_THEME['border']};
-            }}
+            
+            /* Combo Box */
             QComboBox {{
                 background-color: {DARK_THEME['card_bg']};
                 color: {DARK_THEME['foreground']};
                 border: 1px solid {DARK_THEME['border']};
-                padding: 6px;
                 border-radius: 4px;
+                padding: 4px 8px;
+                min-height: 24px;
             }}
+            
+            QComboBox:hover {{
+                border: 1px solid {DARK_THEME['accent']};
+            }}
+            
             QComboBox QAbstractItemView {{
                 background-color: {DARK_THEME['card_bg']};
                 color: {DARK_THEME['foreground']};
-                selection-background-color: {DARK_THEME['accent']};
+                border: 1px solid {DARK_THEME['border']};
+                selection-background-color: {DARK_THEME['secondary']};
             }}
-            QLabel {{
+            
+            /* Line Edit */
+            QLineEdit {{
+                background-color: {DARK_THEME['card_bg']};
+                color: {DARK_THEME['foreground']};
+                border: 1px solid {DARK_THEME['border']};
+                border-radius: 4px;
+                padding: 4px 8px;
+                min-height: 24px;
+            }}
+            
+            QLineEdit:hover, QLineEdit:focus {{
+                border: 1px solid {DARK_THEME['accent']};
+            }}
+            
+            /* Table View */
+            QTableView {{
+                background-color: {DARK_THEME['card_bg']};
+                alternate-background-color: {DARK_THEME['background']};
+                border: 1px solid {DARK_THEME['border']};
+                gridline-color: {DARK_THEME['border']};
+                border-radius: 4px;
+            }}
+            
+            QTableView::item {{
+                padding: 4px;
+            }}
+            
+            QTableView::item:selected {{
+                background-color: {DARK_THEME['secondary']};
                 color: {DARK_THEME['foreground']};
             }}
+            
+            QHeaderView::section {{
+                background-color: {DARK_THEME['header_bg']};
+                color: {DARK_THEME['foreground']};
+                padding: 6px;
+                border: 1px solid {DARK_THEME['border']};
+                border-radius: 0px;
+                font-weight: bold;
+            }}
+            
+            /* Scroll Bar */
+            QScrollBar:vertical {{
+                background-color: {DARK_THEME['card_bg']};
+                width: 14px;
+                margin: 0px;
+                border-radius: 0px;
+            }}
+            
+            QScrollBar::handle:vertical {{
+                background-color: {DARK_THEME['border']};
+                border-radius: 4px;
+                min-height: 20px;
+                margin: 2px;
+            }}
+            
+            QScrollBar::handle:vertical:hover {{
+                background-color: {DARK_THEME['accent']};
+            }}
+            
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+            
+            QScrollBar:horizontal {{
+                background-color: {DARK_THEME['card_bg']};
+                height: 14px;
+                margin: 0px;
+                border-radius: 0px;
+            }}
+            
+            QScrollBar::handle:horizontal {{
+                background-color: {DARK_THEME['border']};
+                border-radius: 4px;
+                min-width: 20px;
+                margin: 2px;
+            }}
+            
+            QScrollBar::handle:horizontal:hover {{
+                background-color: {DARK_THEME['accent']};
+            }}
+            
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+                width: 0px;
+            }}
+            
+            /* Group Box */
             QGroupBox {{
                 border: 1px solid {DARK_THEME['border']};
                 border-radius: 4px;
-                margin-top: 1em;
-                padding-top: 10px;
+                margin-top: 16px;
+                padding-top: 16px;
+                font-weight: bold;
             }}
+            
             QGroupBox::title {{
                 subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
+                subcontrol-position: top left;
+                padding: 0 5px;
+                background-color: {DARK_THEME['header_bg']};
+                border: 1px solid {DARK_THEME['border']};
+                border-radius: 3px;
+            }}
+            
+            /* Label styles */
+            QLabel {{
                 color: {DARK_THEME['foreground']};
+            }}
+            
+            QLabel[title="true"] {{
+                font-size: 16px;
+                font-weight: bold;
+                color: {DARK_THEME['accent']};
+            }}
+            
+            /* Splitter */
+            QSplitter::handle {{
+                background-color: {DARK_THEME['border']};
+            }}
+            
+            QSplitter::handle:horizontal {{
+                width: 1px;
+            }}
+            
+            QSplitter::handle:vertical {{
+                height: 1px;
+            }}
+            
+            /* Status Bar */
+            QStatusBar {{
+                background-color: {DARK_THEME['header_bg']};
+                color: {DARK_THEME['foreground']};
+                border-top: 1px solid {DARK_THEME['border']};
+            }}
+            
+            QStatusBar QLabel {{
+                padding: 3px;
+            }}
+            
+            /* Frame */
+            QFrame[frameShape="4"], QFrame[frameShape="5"] {{
+                color: {DARK_THEME['border']};
             }}
         """)
 
@@ -194,19 +557,38 @@ class CustomTableModel(QAbstractTableModel):
         self.endResetModel()
 
 class MplCanvas(FigureCanvas):
-    """Matplotlib canvas for embedding in Qt"""
+    """Canvas for matplotlib charts"""
     
     def __init__(self, parent=None, width=5, height=4, dpi=100):
-        self.fig = Figure(figsize=(width, height), dpi=dpi, tight_layout=True)
+        """Initialize the canvas with dark theme"""
+        plt.style.use('dark_background')
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.fig.patch.set_facecolor(DARK_THEME['card_bg'])
         
         self.axes = self.fig.add_subplot(111)
         self.axes.set_facecolor(DARK_THEME['card_bg'])
         self.axes.tick_params(colors=DARK_THEME['foreground'])
-        self.axes.spines['bottom'].set_color(DARK_THEME['border'])
-        self.axes.spines['top'].set_color(DARK_THEME['border'])
-        self.axes.spines['left'].set_color(DARK_THEME['border'])
-        self.axes.spines['right'].set_color(DARK_THEME['border'])
+        self.axes.xaxis.label.set_color(DARK_THEME['foreground'])
+        self.axes.yaxis.label.set_color(DARK_THEME['foreground'])
+        self.axes.title.set_color(DARK_THEME['accent'])
+        
+        # Set spines (chart borders) to the border color
+        for spine in self.axes.spines.values():
+            spine.set_color(DARK_THEME['border'])
+        
+        # Define gold accent colors for chart elements
+        self.chart_colors = [
+            DARK_THEME['accent'],        # Gold
+            DARK_THEME['secondary'],     # Blue
+            '#A6564B',                   # Red
+            '#56A64B',                   # Green 
+            '#6C567B',                   # Purple
+            '#AA8239',                   # Dark gold
+            '#4B7AA6',                   # Light blue
+            '#A64B98',                   # Pink
+            '#4BA657',                   # Teal
+            '#FFD700'                    # Bright gold
+        ]
         
         super().__init__(self.fig)
         self.setParent(parent)
@@ -218,213 +600,237 @@ class DropArea(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        # Enable drop acceptance
-        self.setAcceptDrops(True)
         
         # Debug flag for verbose logging
         self.debug = True
         
-        layout = QVBoxLayout()
+        # Get access to the main window's config manager
+        self.main_window = self.get_main_window()
         
-        self.label = QLabel("Drop CSV file here")
-        self.label.setAlignment(Qt.AlignCenter)
-        font = QFont()
-        font.setPointSize(14)
-        self.label.setFont(font)
-        
-        self.description = QLabel("or use buttons below")
-        self.description.setAlignment(Qt.AlignCenter)
-        
-        # Add explicit import button
-        self.import_button = QPushButton("Select CSV File")
-        self.import_button.clicked.connect(self.open_file_dialog)
-        self.import_button.setMinimumHeight(40)
-        self.import_button.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {DARK_THEME['accent']};
-                color: white;
-                font-weight: bold;
-                font-size: 12px;
-                border-radius: 4px;
-                padding: 8px 16px;
-            }}
-            QPushButton:hover {{
-                background-color: {DARK_THEME['accent_hover']};
-            }}
-        """)
-        
-        # Create a QLabel with an icon for import
-        self.icon_label = QLabel()
-        self.icon_label.setAlignment(Qt.AlignCenter)
-        
-        # Create a pixmap with a document icon (using Unicode character)
-        icon_font = QFont()
-        icon_font.setPointSize(48)
-        icon_pixmap = QPixmap(64, 64)
-        icon_pixmap.fill(Qt.transparent)
-        painter = QPainter(icon_pixmap)
-        painter.setFont(icon_font)
-        painter.setPen(QColor(DARK_THEME['accent']))
-        painter.drawText(icon_pixmap.rect(), Qt.AlignCenter, "📄")
-        painter.end()
-        
-        self.icon_label.setPixmap(icon_pixmap)
-        self.icon_label.setMinimumHeight(80)
-        
-        layout.addStretch()
-        layout.addWidget(self.icon_label)
-        layout.addWidget(self.label)
-        layout.addWidget(self.description)
-        layout.addSpacing(20)
-        layout.addWidget(self.import_button)
-        layout.addStretch()
-        
-        self.setLayout(layout)
+        self.setAcceptDrops(True)
         self.setMinimumHeight(200)
         
-        # Style the drop area
+        # Create layout
+        layout = QVBoxLayout()
+        
+        # Add a label and icon
+        self.label = QLabel("Please select a CSV File here")
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setProperty("titleLabel", "true")
+        
+        self.icon_label = QLabel("📄")
+        self.icon_label.setStyleSheet(f"font-size: 48px; color: {DARK_THEME['accent']};")
+        self.icon_label.setAlignment(Qt.AlignCenter)
+        
+        # Add alternative method text
+        self.alt_label = QLabel("or")
+        self.alt_label.setAlignment(Qt.AlignCenter)
+        
+        # Add button for file selection
+        self.select_button = QPushButton("Select CSV File")
+        self.select_button.clicked.connect(self.open_file_dialog)
+        
+        # Add to layout
+        layout.addWidget(self.label)
+        layout.addWidget(self.icon_label)
+        layout.addWidget(self.alt_label)
+        layout.addWidget(self.select_button, 0, Qt.AlignCenter)
+        
+        self.setLayout(layout)
         self._update_style(False)
+    
+    def get_main_window(self):
+        """Find the main window parent"""
+        parent = self.parent()
+        while parent is not None:
+            if isinstance(parent, MainWindow):
+                return parent
+            parent = parent.parent()
+        return None
     
     def open_file_dialog(self):
         """Open a file dialog to select a CSV file"""
-        filepath, _ = QFileDialog.getOpenFileName(
-            self, "Open CSV File", "", "CSV Files (*.csv)"
-        )
-        if filepath:
-            self.fileDropped.emit(filepath)
-            
-    def _update_style(self, highlight=False):
-        """Update the style of the drop area with optional highlighting"""
-        if highlight:
-            self.setStyleSheet(f"""
-                DropArea {{
-                    border: 2px dashed {DARK_THEME['accent']};
-                    border-radius: 8px;
-                    background-color: {DARK_THEME['card_bg']};
-                }}
-            """)
+        if self.main_window and hasattr(self.main_window, 'config_manager'):
+            # Get the import directory from config
+            start_dir = self.main_window.config_manager.get_last_used_directory()
         else:
-            self.setStyleSheet(f"""
-                DropArea {{
-                    border: 2px dashed {DARK_THEME['border']};
-                    border-radius: 8px;
-                    background-color: {DARK_THEME['card_bg']};
-                }}
-                DropArea:hover {{
-                    border-color: {DARK_THEME['accent']};
-                }}
-            """)
+            # Fallback to current directory if config manager is not available
+            start_dir = ""
         
-    def mousePressEvent(self, event):
-        self.open_file_dialog()
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Open CSV File", start_dir, "CSV Files (*.csv)"
+        )
         
-    # Keep our existing drag and drop implementation
-    def dragEnterEvent(self, event):
-        if self.debug:
-            self.print_mime_data(event, "dragEnterEvent")
-        
-        try:
-            # Accept ANY drag initially - crucial for Windows to show drop is possible
-            has_urls = event.mimeData().hasUrls()
-            if has_urls:
-                event.acceptProposedAction()
-                self._update_style(True)
-                return
+        if filepath:
+            if self.debug:
+                print(f"File selected via dialog: {filepath}")
                 
-        except Exception as e:
-            print(f"ERROR in dragEnterEvent: {str(e)}")
-        
-        event.ignore()
-        
-    def dragMoveEvent(self, event):
-        if self.debug:
-            print("DropArea: dragMoveEvent")
-        
-        try:
-            # Continue accepting the drag
-            if event.mimeData().hasUrls():
-                event.acceptProposedAction()
-                return
-        except Exception as e:
-            print(f"ERROR in dragMoveEvent: {str(e)}")
-        
-        event.ignore()
-        
-    def dragLeaveEvent(self, event):
-        if self.debug:
-            print("DropArea: dragLeaveEvent")
-        
-        # Reset style
-        self._update_style(False)
-        event.accept()
+            # Update last used directory in config if possible
+            if self.main_window and hasattr(self.main_window, 'config_manager'):
+                self.main_window.config_manager.set_last_used_directory(str(Path(filepath).parent))
+                
+            self.fileDropped.emit(filepath)
     
-    def dropEvent(self, event):
-        if self.debug:
-            self.print_mime_data(event, "dropEvent")
+    def _update_style(self, highlight=False):
+        """Update the border style of the drop area"""
+        border_color = DARK_THEME['accent'] if highlight else DARK_THEME['border']
+        bg_color = DARK_THEME['card_bg'] if not highlight else DARK_THEME['background']
+        self.setStyleSheet(f"""
+            QWidget {{
+                border: 2px dashed {border_color};
+                border-radius: 8px;
+                background-color: {bg_color};
+                padding: 16px;
+            }}
+            
+            QLabel {{
+                border: none;
+                background-color: transparent;
+                padding: 0px;
+            }}
+            
+            QLabel[titleLabel="true"] {{
+                color: {DARK_THEME['accent']};
+                font-size: 16px;
+                font-weight: bold;
+            }}
+        """)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press events to provide button-like interaction"""
+        if event.button() == Qt.LeftButton:
+            self.open_file_dialog()
+            
+class ImportArea(QWidget):
+    """Widget for importing CSV files via file selection"""
+    
+    fileSelected = Signal(str)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
         
-        # Reset style first thing
-        self._update_style(False)
+        # Debug flag for verbose logging
+        self.debug = True
         
-        # Process dropped files
-        try:
-            if event.mimeData().hasUrls():
-                urls = event.mimeData().urls()
+        # Get access to the main window's config manager
+        self.main_window = self.get_main_window()
+        
+        layout = QVBoxLayout()
+        
+        self.label = QLabel("Import CSV File")
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setProperty("titleLabel", "true")
+        
+        # Create and add document icon
+        icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "document_icon.png")
+        
+        # If the icon file exists, use it, otherwise create a text label
+        if os.path.exists(icon_path):
+            self.icon_label = QLabel()
+            self.icon_label.setPixmap(QPixmap(icon_path).scaled(48, 48, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            self.icon_label.setAlignment(Qt.AlignCenter)
+            self.icon_label.setProperty("iconLabel", "true")
+        else:
+            # Create a gold-colored document icon as text
+            self.icon_label = QLabel("📄")
+            self.icon_label.setStyleSheet(f"font-size: 48px; color: {DARK_THEME['accent']};")
+            self.icon_label.setAlignment(Qt.AlignCenter)
+            self.icon_label.setProperty("iconLabel", "true")
+        
+        # Add instructions text
+        self.instruction_label = QLabel("Click here or use File > Import CSV to load your data")
+        self.instruction_label.setAlignment(Qt.AlignCenter)
+        self.instruction_label.setProperty("instructionLabel", "true")
+        
+        # Add file select button with gold gradient
+        self.select_button = QPushButton("Select CSV File")
+        self.select_button.setMinimumWidth(150)
+        self.select_button.clicked.connect(self.open_file_dialog)
+        
+        # Create layout
+        layout.addWidget(self.label)
+        layout.addWidget(self.icon_label)
+        layout.addWidget(self.instruction_label)
+        layout.addSpacing(10)
+        layout.addWidget(self.select_button, 0, Qt.AlignCenter)
+        layout.setContentsMargins(20, 20, 20, 20)
+        
+        self.setLayout(layout)
+        self._update_style()
+        
+        # Make the widget clickable for file selection
+        self.setCursor(Qt.PointingHandCursor)
+    
+    def get_main_window(self):
+        """Find the main window parent"""
+        parent = self.parent()
+        while parent is not None:
+            if isinstance(parent, MainWindow):
+                return parent
+            parent = parent.parent()
+        return None
+
+    def open_file_dialog(self):
+        """Open file dialog to select a CSV file"""
+        if self.main_window and hasattr(self.main_window, 'config_manager'):
+            # Get the import directory from config
+            start_dir = self.main_window.config_manager.get_last_used_directory()
+        else:
+            # Fallback to current directory if config manager is not available
+            start_dir = ""
+        
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Open CSV File", start_dir, "CSV Files (*.csv)"
+        )
+        
+        if filepath:
+            if self.debug:
+                print(f"File selected via dialog: {filepath}")
                 
-                # Process each URL (file)
-                for url in urls:
-                    try:
-                        # Convert URL to local file path (different methods for robustness)
-                        filepath = url.toLocalFile()
-                        if not filepath and url.isLocalFile():
-                            filepath = url.path()
-                            # Remove leading slash on Windows if it exists
-                            if filepath.startswith('/') and ':' in filepath:
-                                filepath = filepath[1:]
-                        
-                        # Now check file type
-                        if filepath.lower().endswith('.csv'):
-                            # Accept the event
-                            event.setDropAction(Qt.CopyAction)
-                            event.acceptProposedAction()
-                            
-                            # Emit signal with file path
-                            self.fileDropped.emit(filepath)
-                            return True
-                    except Exception as e:
-                        print(f"ERROR processing URL {url.toString()}: {str(e)}")
-        except Exception as e:
-            print(f"ERROR in dropEvent: {str(e)}")
-        
-        event.ignore()
-        return False
-        
-    def print_mime_data(self, event, event_name):
-        """Debug helper to print detailed information about MIME data in an event"""
-        try:
-            print(f"\n=== {event_name} MIME Data Debug ===")
-            print(f"Event type: {event.type()}")
-            print(f"Drop action: {event.dropAction()}")
-            print(f"Proposed action: {event.proposedAction()}")
-            print(f"Possible actions: {event.possibleActions()}")
+            # Update last used directory in config if possible
+            if self.main_window and hasattr(self.main_window, 'config_manager'):
+                self.main_window.config_manager.set_last_used_directory(str(Path(filepath).parent))
+                
+            self.fileSelected.emit(filepath)
+    
+    def _update_style(self):
+        """Update the styling of the import area"""
+        self.setStyleSheet(f"""
+            QWidget {{
+                border: 2px dashed {DARK_THEME['accent']};
+                border-radius: 8px;
+                background-color: {DARK_THEME['card_bg']};
+                padding: 16px;
+            }}
             
-            mime_data = event.mimeData()
-            print(f"Has URLs: {mime_data.hasUrls()}")
-            print(f"MIME formats: {mime_data.formats()}")
+            QLabel[iconLabel="true"] {{
+                border: none;
+                background-color: transparent;
+                padding: 0px;
+            }}
             
-            if mime_data.hasUrls():
-                urls = mime_data.urls()
-                print(f"URL count: {len(urls)}")
-                for i, url in enumerate(urls):
-                    print(f"  URL {i}: {url.toString()}")
-                    print(f"    isLocalFile: {url.isLocalFile()}")
-                    print(f"    toLocalFile: {url.toLocalFile()}")
-                    print(f"    path: {url.path()}")
-                    print(f"    scheme: {url.scheme()}")
-                    
-            print("=== End MIME Data Debug ===\n")
-        except Exception as e:
-            print(f"Error in print_mime_data: {str(e)}")
+            QLabel[titleLabel="true"] {{
+                border: none;
+                background-color: transparent;
+                color: {DARK_THEME['accent']};
+                font-size: 16px;
+                font-weight: bold;
+                padding: 0px;
+            }}
             
+            QLabel[instructionLabel="true"] {{
+                border: none;
+                background-color: transparent;
+                padding: 0px;
+                color: {DARK_THEME['foreground']};
+            }}
+        """)
+
+    def mousePressEvent(self, event):
+        """Handle mouse press events to provide button-like interaction"""
+        if event.button() == Qt.LeftButton:
+            self.open_file_dialog()
+
 class DataProcessor:
     """Class to handle data processing logic"""
     
@@ -448,6 +854,10 @@ class DataProcessor:
         Raises:
             ValueError: If the file can't be loaded for any reason
         """
+        print("\n=== DataProcessor.load_csv ===")
+        print(f"Processing filepath: {filepath}")
+        print(f"Type of filepath: {type(filepath)}")
+        
         if DataProcessor.debug:
             print(f"DataProcessor.load_csv: Processing {filepath}")
             print(f"File exists check: {os.path.exists(filepath)}")
@@ -479,17 +889,96 @@ class DataProcessor:
         # Try to read the first few bytes to check if file is accessible
         try:
             with open(filepath, 'rb') as f:
-                first_bytes = f.read(16)
+                first_bytes = f.read(32)
                 if DataProcessor.debug:
                     print(f"First bytes: {first_bytes}")
+                    print(f"First bytes (hex): {first_bytes.hex()}")
+                    
+                # Check if the first bytes look like a CSV file
+                # CSV files typically start with ASCII characters like letters, numbers, or common punctuation
+                if first_bytes and all(b < 127 for b in first_bytes):
+                    if DataProcessor.debug:
+                        print("First bytes look like valid ASCII/text data")
+                else:
+                    if DataProcessor.debug:
+                        print("Warning: First bytes don't look like standard text/CSV data")
+                    # Continue anyway - might still be decodable with the right encoding
+                    
+                # Check for German umlauts in the first bytes
+                umlaut_patterns = [
+                    b'\xe4',  # ä in latin1/cp1252
+                    b'\xf6',  # ö in latin1/cp1252
+                    b'\xfc',  # ü in latin1/cp1252
+                    b'\xc4',  # Ä in latin1/cp1252
+                    b'\xd6',  # Ö in latin1/cp1252
+                    b'\xdc',  # Ü in latin1/cp1252
+                    b'\xdf'   # ß in latin1/cp1252
+                ]
+                
+                has_potential_umlauts = any(pattern in first_bytes for pattern in umlaut_patterns)
+                if has_potential_umlauts:
+                    print("Detected potential German umlauts in the first bytes")
+                
+                # Also read more content to check for umlauts that might not be in the first 32 bytes
+                f.seek(0)
+                more_content = f.read(4096)  # Read more content to increase chances of finding umlauts
+                has_potential_umlauts_extended = any(pattern in more_content for pattern in umlaut_patterns)
+                if has_potential_umlauts_extended and not has_potential_umlauts:
+                    print("Detected potential German umlauts in extended content")
+                    has_potential_umlauts = True
         except Exception as e:
-            error_msg = f"Failed to open file: {str(e)}"
+            error_msg = f"Failed to open file for reading: {str(e)}"
             print(error_msg)
             raise ValueError(error_msg)
         
-        # List of encodings to try, in order of preference
-        encodings_to_try = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252', 'windows-1252']
+        # Get config manager if available
+        config_manager = None
+        try:
+            # Try to find a MainWindow instance to get the config manager
+            for widget in QApplication.topLevelWidgets():
+                if isinstance(widget, MainWindow):
+                    config_manager = widget.config_manager
+                    break
+        except Exception as e:
+            print(f"Error getting config manager: {str(e)}")
         
+        # List of encodings to try, in order of preference
+        encodings_to_try = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252', 'windows-1252', 'utf-8-sig']
+        
+        # If we have a config manager, use the encodings from the config
+        if config_manager:
+            try:
+                # Get default encoding
+                default_encoding = config_manager.get('Data', 'default_encoding', 'utf-8')
+                
+                # Get alternative encodings
+                alt_encodings_str = config_manager.get('Data', 'alternative_encodings', 
+                                                      'latin1,iso-8859-1,cp1252,windows-1252,utf-8-sig')
+                alt_encodings = [enc.strip() for enc in alt_encodings_str.split(',')]
+                
+                # Get German encodings if we detected umlauts
+                if has_potential_umlauts:
+                    german_encodings_str = config_manager.get('Data', 'german_encodings', 
+                                                             'latin1,cp1252,iso-8859-1,windows-1252')
+                    german_encodings = [enc.strip() for enc in german_encodings_str.split(',')]
+                    
+                    # Prioritize German encodings if we detected umlauts
+                    encodings_to_try = [default_encoding] + german_encodings + alt_encodings
+                else:
+                    encodings_to_try = [default_encoding] + alt_encodings
+                
+                # Remove duplicates while preserving order
+                seen = set()
+                encodings_to_try = [enc for enc in encodings_to_try if not (enc in seen or seen.add(enc))]
+                
+                print(f"Using encodings from config: {encodings_to_try}")
+            except Exception as e:
+                print(f"Error getting encodings from config: {str(e)}")
+                # Fall back to default encodings
+        
+        print(f"Trying encodings in sequence: {encodings_to_try}")
+        
+        # Try pandas directly first with each encoding
         last_error = None
         for encoding in encodings_to_try:
             try:
@@ -504,23 +993,58 @@ class DataProcessor:
                     print(f"DataFrame shape: {df.shape}")
                     print(f"Columns: {df.columns.tolist()}")
                     print(f"First row: {df.iloc[0].tolist() if not df.empty else 'Empty DataFrame'}")
-                
-                # Remove CLAN column as per requirements
-                if 'CLAN' in df.columns:
-                    df = df.drop(columns=['CLAN'])
-                    if DataProcessor.debug:
-                        print("Removed CLAN column")
-                
-                # Check if required columns are present
-                required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
-                missing_columns = [col for col in required_columns if col not in df.columns]
-                
-                if missing_columns:
-                    warning_msg = f"Warning: Missing required columns: {missing_columns}"
-                    print(warning_msg)
-                    # Continue anyway - user might want to view the data regardless
-                
-                return df
+                    
+                    # Check for German characters in the data
+                    sample_data = df.head(5).to_string()
+                    print(f"Sample data (first 5 rows):\n{sample_data}")
+                    
+                    # Check for both properly formatted umlauts and common garbled representations
+                    has_proper_umlauts = any(char in sample_data for char in 'äöüÄÖÜß')
+                    
+                    # Check for garbled umlaut representations (common when encoding is mismatched)
+                    garbled_umlaut_patterns = ['Ã¤', 'Ã¶', 'Ã¼', 'Ã„', 'Ã–', 'Ãœ', 'ÃŸ',  # UTF-8 misinterpreted as Latin-1
+                                              'ä', 'ö', 'ü', 'Ä', 'Ö', 'Ü', 'ß',           # Correct representations
+                                              'a\u0308', 'o\u0308', 'u\u0308',             # Decomposed forms
+                                              'A\u0308', 'O\u0308', 'U\u0308',             # Decomposed uppercase
+                                              'FeldjÃ¤ger', 'Feldjäger',                  # Common specific cases
+                                              'ÃƒÂ¤', 'ÃƒÂ¶', 'ÃƒÂ¼']                     # Double-encoding cases
+                    
+                    has_garbled_umlauts = any(pattern in sample_data for pattern in garbled_umlaut_patterns)
+                    
+                    if has_proper_umlauts:
+                        print(f"Data contains properly formatted German umlauts")
+                    elif has_garbled_umlauts:
+                        print(f"Data contains garbled German umlauts (encoding mismatch detected)")
+                        
+                        # If we have garbled umlauts, try to fix them when the encoding is wrong
+                        if 'FeldjÃ¤ger' in sample_data:
+                            print("Found misencoded 'FeldjÃ¤ger' - this should be 'Feldjäger'")
+                            
+                            # If it's in the PLAYER column, we could try to fix it
+                            if 'PLAYER' in df.columns and df['PLAYER'].str.contains('FeldjÃ¤ger').any():
+                                print("Attempting to fix encoding for the PLAYER column")
+                                # This is a specific fix for this case - adjust as needed
+                                df['PLAYER'] = df['PLAYER'].str.replace('FeldjÃ¤ger', 'Feldjäger')
+                    
+                    print(f"Data contains German umlauts (properly formatted or garbled): {has_proper_umlauts or has_garbled_umlauts}")
+                    
+                    # Check if required columns are present
+                    required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
+                    missing_columns = [col for col in required_columns if col not in df.columns]
+                    
+                    if missing_columns:
+                        error_msg = f"Missing required columns: {missing_columns}. CSV file must contain all of these columns: {required_columns}"
+                        print(error_msg)
+                        raise ValueError(error_msg)
+                    
+                    # Keep only the required columns, drop everything else
+                    extra_columns = [col for col in df.columns if col not in required_columns]
+                    if extra_columns:
+                        print(f"Dropping extra columns: {extra_columns}")
+                        df = df[required_columns]
+                    
+                    print("=== CSV loaded successfully ===\n")
+                    return df
                 
             except UnicodeDecodeError as e:
                 # Log the specific encoding error and try the next one
@@ -539,20 +1063,280 @@ class DataProcessor:
                 # File doesn't seem to be a valid CSV
                 error_msg = f"Not a valid CSV file - parser error: {str(e)}"
                 print(error_msg)
-                raise ValueError(error_msg)
+                
+                # Try with a different separator as a fallback
+                try:
+                    if DataProcessor.debug:
+                        print(f"Trying with different separator (semicolon) for {encoding}")
+                    df = pd.read_csv(filepath, encoding=encoding, sep=';')
+                    if DataProcessor.debug:
+                        print(f"Success with semicolon separator using {encoding}")
+                    
+                    # Check for German umlauts again with the new separator
+                    sample_data = df.head(5).to_string()
+                    
+                    # Check for both proper and garbled umlauts
+                    has_proper_umlauts = any(char in sample_data for char in 'äöüÄÖÜß')
+                    garbled_umlaut_patterns = ['Ã¤', 'Ã¶', 'Ã¼', 'Ã„', 'Ã–', 'Ãœ', 'ÃŸ', 'FeldjÃ¤ger']
+                    has_garbled_umlauts = any(pattern in sample_data for pattern in garbled_umlaut_patterns)
+                    
+                    print(f"Data with semicolon separator contains German umlauts: {has_proper_umlauts or has_garbled_umlauts}")
+                    
+                    # Check if required columns are present
+                    required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
+                    missing_columns = [col for col in required_columns if col not in df.columns]
+                    
+                    if missing_columns:
+                        error_msg = f"Missing required columns: {missing_columns}. CSV file must contain all of these columns: {required_columns}"
+                        print(error_msg)
+                        raise ValueError(error_msg)
+                    
+                    # Keep only the required columns, drop everything else
+                    extra_columns = [col for col in df.columns if col not in required_columns]
+                    if extra_columns:
+                        print(f"Dropping extra columns: {extra_columns}")
+                        df = df[required_columns]
+                    
+                    print("=== CSV loaded successfully with semicolon separator ===\n")
+                    return df
+                except Exception as sep_e:
+                    if DataProcessor.debug:
+                        print(f"Alternative separator failed: {str(sep_e)}")
+                    # Continue to the next encoding
+                    last_error = e
+                    continue
                 
             except Exception as e:
-                # For other exceptions, log and raise immediately
+                # For other exceptions, log and try the next encoding
                 error_msg = f"Error loading CSV file with {encoding}: {str(e)}"
                 print(error_msg)
-                raise ValueError(error_msg)
+                last_error = e
+                continue
                 
-        # If we've tried all encodings and none worked
-        error_msg = "Could not decode the CSV file with any supported encoding. Please check the file format."
-        if last_error:
-            error_msg += f" Last error: {str(last_error)}"
+        # If we've tried all encodings and none worked, try a more manual approach
+        try:
+            if DataProcessor.debug:
+                print("Trying manual file reading approach...")
             
-        print(error_msg)
+            # Read the file as bytes and try to detect the encoding
+            with open(filepath, 'rb') as f:
+                content = f.read()
+                
+            print(f"File content size: {len(content)} bytes")
+            print(f"First 100 bytes (hex): {content[:100].hex()}")
+            
+            # Check for BOM markers that might indicate encoding
+            if content.startswith(b'\xef\xbb\xbf'):
+                print("Detected UTF-8 BOM marker")
+                # Try UTF-8 with BOM
+                try:
+                    text = content.decode('utf-8-sig')
+                    print("Successfully decoded with utf-8-sig (UTF-8 with BOM)")
+                    import io
+                    df = pd.read_csv(io.StringIO(text))
+                    
+                    # Process as before
+                    if 'CLAN' in df.columns:
+                        df = df.drop(columns=['CLAN'])
+                        print("Removed CLAN column")
+                    
+                    # Check if required columns are present
+                    required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
+                    missing_columns = [col for col in required_columns if col not in df.columns]
+                    
+                    if missing_columns:
+                        error_msg = f"Missing required columns: {missing_columns}. CSV file must contain all of these columns: {required_columns}"
+                        print(error_msg)
+                        raise ValueError(error_msg)
+                    
+                    # Keep only the required columns, drop everything else
+                    extra_columns = [col for col in df.columns if col not in required_columns]
+                    if extra_columns:
+                        print(f"Dropping extra columns: {extra_columns}")
+                        df = df[required_columns]
+                    
+                    print("=== CSV loaded successfully via UTF-8 with BOM ===\n")
+                    return df
+                except Exception as e:
+                    print(f"Failed to decode with utf-8-sig: {str(e)}")
+            
+            # Try to detect German umlauts in the content
+            german_encodings = ['latin1', 'cp1252', 'iso-8859-1', 'windows-1252']
+            
+            # Look for byte patterns that might be German umlauts
+            umlaut_patterns = [
+                b'\xe4',  # ä in latin1/cp1252
+                b'\xf6',  # ö in latin1/cp1252
+                b'\xfc',  # ü in latin1/cp1252
+                b'\xc4',  # Ä in latin1/cp1252
+                b'\xd6',  # Ö in latin1/cp1252
+                b'\xdc',  # Ü in latin1/cp1252
+                b'\xdf'   # ß in latin1/cp1252
+            ]
+            
+            has_potential_umlauts = any(pattern in content for pattern in umlaut_patterns)
+            if has_potential_umlauts:
+                print("Detected potential German umlauts in the file")
+                # Try German encodings first
+                for encoding in german_encodings:
+                    try:
+                        text = content.decode(encoding)
+                        print(f"Successfully decoded content with {encoding} (German encoding)")
+                        
+                        # Check for both properly formatted umlauts and common garbled representations
+                        has_proper_umlauts = any(char in text for char in 'äöüÄÖÜß')
+                        
+                        # Check for specific German name patterns that should contain umlauts
+                        has_german_names = 'Feldjager' in text or 'Feldjaeger' in text or 'Jager' in text
+                        
+                        if has_proper_umlauts:
+                            print(f"Decoded text contains properly formatted German umlauts")
+                        
+                        if has_german_names:
+                            print(f"Detected German names that should contain umlauts but might be missing them")
+                        
+                        print(f"Decoded text contains German umlauts: {has_proper_umlauts}")
+                        
+                        # Also look for specific patterns like "FeldjÃ¤ger" that indicate encoding issues
+                        garbled_patterns = ['FeldjÃ¤ger', 'JÃ¤ger', 'Ã¤', 'Ã¶', 'Ã¼', 'Ã„', 'Ã–', 'Ãœ', 'ÃŸ']
+                        has_garbled_umlauts = any(pattern in text for pattern in garbled_patterns)
+                        
+                        if has_garbled_umlauts:
+                            print(f"Decoded text contains garbled umlauts, indicating possible encoding issues")
+                            
+                            # Try to fix specific garbled patterns
+                            text = text.replace('FeldjÃ¤ger', 'Feldjäger')
+                            text = text.replace('JÃ¤ger', 'Jäger')
+                            print("Attempted to fix specific garbled umlaut patterns")
+                        
+                        import io
+                        df = pd.read_csv(io.StringIO(text))
+                        
+                        # Check if we need to fix the dataframe directly
+                        if 'PLAYER' in df.columns:
+                            # Check for misencoded player names
+                            sample_players = ', '.join(df['PLAYER'].head(10).tolist())
+                            print(f"Sample player names: {sample_players}")
+                            
+                            # If we see garbled umlauts in player names, fix them
+                            if any(pattern in sample_players for pattern in garbled_patterns):
+                                print("Fixing garbled player names in the DataFrame")
+                                df['PLAYER'] = df['PLAYER'].str.replace('FeldjÃ¤ger', 'Feldjäger')
+                                df['PLAYER'] = df['PLAYER'].str.replace('JÃ¤ger', 'Jäger')
+                        
+                        # Process as before
+                        if 'CLAN' in df.columns:
+                            df = df.drop(columns=['CLAN'])
+                            print("Removed CLAN column")
+                            
+                        # Check if required columns are present
+                        required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
+                        missing_columns = [col for col in required_columns if col not in df.columns]
+                        
+                        if missing_columns:
+                            error_msg = f"Missing required columns: {missing_columns}. CSV file must contain all of these columns: {required_columns}"
+                            print(error_msg)
+                            raise ValueError(error_msg)
+                        
+                        # Keep only the required columns, drop everything else
+                        extra_columns = [col for col in df.columns if col not in required_columns]
+                        if extra_columns:
+                            print(f"Dropping extra columns: {extra_columns}")
+                            df = df[required_columns]
+                        
+                        print("=== CSV loaded successfully via manual decoding ===\n")
+                        return df
+                    except Exception as e:
+                        print(f"Failed to decode with {encoding}: {str(e)}")
+                
+            # Try each encoding to decode the content
+            for encoding in encodings_to_try:
+                try:
+                    text = content.decode(encoding)
+                    if DataProcessor.debug:
+                        print(f"Successfully decoded content with {encoding}")
+                        print(f"First 100 characters: {text[:100]}")
+                    
+                    # Check for German characters and try to fix encoding issues
+                    contains_umlauts = any(char in text for char in 'äöüÄÖÜß')
+                    
+                    if contains_umlauts:
+                        print(f"Decoded text with {encoding} contains proper umlauts")
+                    else:
+                        # Look for garbled characters that indicate encoding issues
+                        garbled_patterns = ['FeldjÃ¤ger', 'JÃ¤ger', 'Ã¤', 'Ã¶', 'Ã¼', 'Ã„', 'Ã–', 'Ãœ', 'ÃŸ']
+                        has_garbled_umlauts = any(pattern in text for pattern in garbled_patterns)
+                        
+                        if has_garbled_umlauts:
+                            print(f"Decoded text contains garbled umlauts with {encoding}")
+                            # Try to fix common garbled patterns
+                            text = text.replace('FeldjÃ¤ger', 'Feldjäger')
+                            text = text.replace('JÃ¤ger', 'Jäger')
+                    
+                    # Try to convert text to CSV using StringIO
+                    import io
+                    df = pd.read_csv(io.StringIO(text))
+                    
+                    if DataProcessor.debug:
+                        print(f"Successfully parsed CSV from decoded text")
+                        # Display sample data to check for encoding issues
+                        sample_data = df.head(5).to_string()
+                        print(f"Sample data from decoded text:\n{sample_data}")
+                    
+                    # Check and fix player names if needed
+                    if 'PLAYER' in df.columns:
+                        # Check for garbled names
+                        if df['PLAYER'].astype(str).str.contains('FeldjÃ¤ger').any() or df['PLAYER'].astype(str).str.contains('JÃ¤ger').any():
+                            print("Fixing garbled player names in the DataFrame")
+                            df['PLAYER'] = df['PLAYER'].str.replace('FeldjÃ¤ger', 'Feldjäger')
+                            df['PLAYER'] = df['PLAYER'].str.replace('JÃ¤ger', 'Jäger')
+                            
+                            # Check if fixed
+                            contains_fixed_umlauts = df['PLAYER'].astype(str).str.contains('Feldjäger').any()
+                            print(f"DataFrame now contains properly formatted player names: {contains_fixed_umlauts}")
+                    
+                    # Process as before
+                    if 'CLAN' in df.columns:
+                        df = df.drop(columns=['CLAN'])
+                        print("Removed CLAN column")
+                        
+                    # Check if required columns are present
+                    required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
+                    missing_columns = [col for col in required_columns if col not in df.columns]
+                    
+                    if missing_columns:
+                        error_msg = f"Missing required columns: {missing_columns}. CSV file must contain all of these columns: {required_columns}"
+                        print(error_msg)
+                        raise ValueError(error_msg)
+                    
+                    # Keep only the required columns, drop everything else
+                    extra_columns = [col for col in df.columns if col not in required_columns]
+                    if extra_columns:
+                        print(f"Dropping extra columns: {extra_columns}")
+                        df = df[required_columns]
+                    
+                except UnicodeDecodeError:
+                    # Try the next encoding
+                    if DataProcessor.debug:
+                        print(f"Failed to decode content with {encoding}")
+                    continue
+                except Exception as e:
+                    # Other errors (like CSV parsing)
+                    if DataProcessor.debug:
+                        print(f"Error parsing CSV with {encoding}: {str(e)}")
+                    continue
+                
+        except Exception as e:
+            print(f"Manual file reading approach failed: {str(e)}")
+            
+        # If we get here, we've tried everything and failed
+        if last_error:
+            error_msg = f"Failed to load CSV file after trying multiple encodings. Last error: {str(last_error)}"
+        else:
+            error_msg = "Failed to load CSV file after trying multiple approaches."
+            
+        print(f"CSV LOADING FAILED: {error_msg}")
+        print("=== End of DataProcessor.load_csv (with errors) ===\n")
         raise ValueError(error_msg)
     
     @staticmethod
@@ -598,7 +1382,7 @@ class DataProcessor:
         }
 
 class MainWindow(QMainWindow):
-    """Main application window"""
+    """Main window for the Total Battle Analyzer application"""
     
     def __init__(self):
         super().__init__()
@@ -609,15 +1393,22 @@ class MainWindow(QMainWindow):
         # Debug flag for verbose logging
         self.debug = True
         
+        # Initialize config manager
+        self.config_manager = ConfigManager()
+        
         self.raw_data = None
         self.raw_data_model = None
         self.raw_data_proxy_model = None
         self.current_filepath = None
         
         self.setup_ui()
-        self.setup_menu()
+        # Menu is now setup in setup_ui method
+        
+        # Set window size from config
+        width = self.config_manager.get_int('General', 'window_width', 1200)
+        height = self.config_manager.get_int('General', 'window_height', 800)
+        self.resize(width, height)
         self.setWindowTitle("Total Battle Analyzer")
-        self.resize(1200, 800)
         
         # Connect signals and slots
         if hasattr(self, 'drop_area'):
@@ -625,25 +1416,65 @@ class MainWindow(QMainWindow):
         
         self.statusBar().showMessage("Ready", 3000)
     
+    def closeEvent(self, event):
+        """Handle window close event to save settings"""
+        # Save window size to config
+        self.config_manager.set('General', 'window_width', self.width())
+        self.config_manager.set('General', 'window_height', self.height())
+        
+        # Accept the event and close the window
+        event.accept()
+    
     def setup_ui(self):
-        """Set up the main UI components"""
+        """Set up the application's main user interface"""
+        # Set window properties
+        self.setWindowTitle("Total Battle Analyzer")
+        self.setMinimumSize(900, 700)
+        
         # Create central widget and main layout
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
-        self.setCentralWidget(central_widget)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
         
-        # Create tab widget
+        # Create application title with gold styling
+        title_layout = QHBoxLayout()
+        title_label = QLabel("Total Battle Analyzer")
+        title_label.setProperty("title", "true")
+        title_label.setStyleSheet(f"""
+            font-size: 22px;
+            font-weight: bold;
+            color: {DARK_THEME['accent']};
+            padding: 10px;
+            border-bottom: 2px solid {DARK_THEME['accent']};
+        """)
+        title_label.setAlignment(Qt.AlignCenter)
+        title_layout.addWidget(title_label)
+        main_layout.addLayout(title_layout)
+        
+        # Create tab widget and add to layout
         self.tabs = QTabWidget()
-        main_layout.addWidget(self.tabs)
+        self.tabs.setTabPosition(QTabWidget.North)
+        self.tabs.setMovable(False)
         
-        # Set up tabs
+        # Create tabs
         self.setup_import_tab()
         self.setup_raw_data_tab()
         self.setup_analysis_tab()
         self.setup_charts_tab()
         
+        # Add tabs to widget
+        main_layout.addWidget(self.tabs)
+        
         # Create status bar
-        self.statusBar().showMessage("Ready")
+        self.status_bar = self.statusBar()
+        self.status_bar.showMessage("Ready")
+        
+        # Set central widget
+        self.setCentralWidget(central_widget)
+        
+        # Set up the menu bar
+        self.setup_menu()
     
     def setup_menu(self):
         """Set up the application menu"""
@@ -677,10 +1508,16 @@ class MainWindow(QMainWindow):
     
     def open_file_dialog(self):
         """Open a file dialog to select a CSV file"""
+        # Get the last used directory from config
+        start_dir = self.config_manager.get_last_used_directory()
+        
         filepath, _ = QFileDialog.getOpenFileName(
-            self, "Open CSV File", "", "CSV Files (*.csv)"
+            self, "Open CSV File", start_dir, "CSV Files (*.csv)"
         )
+        
         if filepath:
+            # Save the directory for next time
+            self.config_manager.set_last_used_directory(str(Path(filepath).parent))
             self.load_csv_file(filepath)
     
     def show_about_dialog(self):
@@ -700,50 +1537,71 @@ class MainWindow(QMainWindow):
         import_tab = QWidget()
         layout = QVBoxLayout()
         
-        # Add welcome message
-        welcome_label = QLabel("Welcome to Total Battle Analyzer")
-        welcome_label.setAlignment(Qt.AlignCenter)
-        font = QFont()
-        font.setPointSize(18)
-        font.setBold(True)
-        welcome_label.setFont(font)
-        
-        # Add instructions
-        instructions = QLabel(
-            "Import your CSV file by dragging and dropping it below, clicking the area, or using the Import button in the File menu."
-        )
-        instructions.setAlignment(Qt.AlignCenter)
-        instructions.setWordWrap(True)
-        
-        # Create and add drop area
-        self.drop_area = DropArea()
-        self.drop_area.fileDropped.connect(self.load_csv_file)
-        
-        # Create info section
-        info_group = QGroupBox("Information")
+        # Create import instructions
+        info_group = QGroupBox("Import Instructions")
         info_layout = QVBoxLayout()
         
-        # File info label
-        self.file_info_label = QLabel("No file loaded")
-        self.file_info_label.setAlignment(Qt.AlignCenter)
+        instructions = QLabel(
+            "To import data from a CSV file:\n"
+            "1. Click the 'Select CSV File' button below\n"
+            "2. Or use File → Import CSV... from the menu (Ctrl+O)\n\n"
+            "The CSV file MUST contain ALL of the following columns:\n"
+            "DATE, PLAYER, SOURCE, CHEST, SCORE\n\n"
+            "Files missing any of these columns will be rejected.\n"
+            "Any additional columns will be automatically removed."
+        )
+        instructions.setWordWrap(True)
+        info_layout.addWidget(instructions)
         
-        # Add widgets to info layout
-        info_layout.addWidget(self.file_info_label)
         info_group.setLayout(info_layout)
         
-        # Add all widgets to main layout
-        layout.addStretch()
-        layout.addWidget(welcome_label)
-        layout.addWidget(instructions)
-        layout.addWidget(self.drop_area)
+        # Create import area for file selection
+        self.import_area = DropArea()
+        self.import_area.fileDropped.connect(self.load_csv_file)
+        
+        # Add widgets to layout
         layout.addWidget(info_group)
-        layout.addStretch()
+        layout.addWidget(self.import_area)
         
         # Set layout for import tab
         import_tab.setLayout(layout)
         
         # Add to tabs
         self.tabs.addTab(import_tab, "Import")
+    
+    def test_drag_drop_system(self):
+        """Diagnostic function to test if drag and drop handlers are working"""
+        print("\n===== TESTING DRAG AND DROP SYSTEM =====")
+        print("This will simulate a drop event with a test file path")
+        
+        # Create a test file
+        test_file_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_file.csv")
+        print(f"Test file path: {test_file_path}")
+        
+        try:
+            # Create a simple CSV file for testing
+            with open(test_file_path, 'w', newline='') as f:
+                f.write("DATE,PLAYER,SOURCE,CHEST,SCORE\n")
+                f.write("2024-03-16,TestPlayer,Test Source,Test Chest,100\n")
+        except Exception as e:
+            print(f"Error creating test file: {str(e)}")
+            return
+        
+        # Direct load test
+        print("\n=== BYPASSING DRAG AND DROP WITH DIRECT LOAD ===")
+        print(f"Directly calling load_csv_file with path: {test_file_path}")
+        self.load_csv_file(test_file_path)
+        print("=== END OF DIRECT LOAD TEST ===\n")
+        
+        # Cleanup the test file
+        try:
+            os.remove(test_file_path)
+        except:
+            pass
+            
+        print("\nIf the direct load worked but drag and drop doesn't,")
+        print("this confirms a system-level issue with Qt drag and drop.")
+        print("===== END OF DRAG AND DROP TEST =====\n")
     
     def setup_raw_data_tab(self):
         """Setup the raw data tab UI"""
@@ -861,9 +1719,9 @@ class MainWindow(QMainWindow):
         self.chart_type_selector = QComboBox()
         self.chart_type_selector.addItems(["Bar Chart", "Pie Chart", "Line Chart"])
         
-        # Chart data selector
+        # Chart data selector - use actual column names that match the DataFrame
         self.chart_data_selector = QComboBox()
-        self.chart_data_selector.addItems(["Player", "Source", "Chest Type"])
+        self.chart_data_selector.addItems(["PLAYER", "SOURCE", "CHEST"])
         
         # Update chart button
         self.update_chart_button = QPushButton("Update Chart")
@@ -892,33 +1750,88 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(charts_tab, "Charts")
     
     def load_csv_file(self, filepath):
-        """Load CSV file and display data"""
+        """
+        Load CSV file and display data.
+        
+        This function handles various filepath formats and provides detailed error info.
+        
+        Args:
+            filepath: The path to the CSV file to load
+        """
+        print("\n========== Starting load_csv_file ==========")
+        print(f"Received filepath: {filepath}")
+        print(f"Type of filepath: {type(filepath)}")
+        
         try:
-            # Normalize filepath for Windows
-            filepath = Path(filepath).resolve().as_posix()
+            # Handle various filepath formats
+            original_filepath = filepath
+            
+            if self.debug:
+                print(f"Starting to load file: {filepath}")
+                print(f"Original path type: {type(filepath)}")
+            
+            # Try to normalize the path in the most robust way possible
+            try:
+                # Convert to string if needed
+                if not isinstance(filepath, (str, Path)):
+                    filepath = str(filepath)
+                    print(f"Converted to string: {filepath}")
+                    
+                # Convert to Path object for robustness
+                path_obj = Path(filepath)
+                
+                # Resolve and convert to string in platform-friendly way
+                filepath = str(path_obj.resolve())
+                
+                if self.debug:
+                    print(f"Normalized path: {filepath}")
+                    print(f"Path exists check: {os.path.exists(filepath)}")
+            except Exception as e:
+                print(f"Path normalization warning (continuing with original path): {str(e)}")
+                filepath = original_filepath
             
             if self.debug:
                 print(f"Loading CSV file: {filepath}")
-                print(f"File exists: {os.path.exists(filepath)}")
-                print(f"File readable: {os.access(filepath, os.R_OK)}")
-                print(f"File size: {os.path.getsize(filepath) if os.path.exists(filepath) else 'N/A'}")
+                if os.path.exists(filepath):
+                    print(f"File exists: Yes")
+                    print(f"File readable: {os.access(filepath, os.R_OK)}")
+                    print(f"File size: {os.path.getsize(filepath)}")
+                    
+                    # Try to read the first few bytes
+                    try:
+                        with open(filepath, 'rb') as f:
+                            first_bytes = f.read(32)
+                            print(f"First bytes: {first_bytes}")
+                    except Exception as file_e:
+                        print(f"Warning: Could not read file bytes: {str(file_e)}")
+                else:
+                    print(f"File does not exist at: {filepath}")
+                    # Try to check the directory
+                    parent_dir = os.path.dirname(filepath)
+                    if parent_dir and os.path.exists(parent_dir):
+                        print(f"Parent directory exists: {parent_dir}")
+                        print(f"Directory contents: {os.listdir(parent_dir)}")
             
             self.statusBar().showMessage(f"Loading {filepath}...", 2000)
             
             try:
                 # Load CSV data with improved error handling
+                print(f"Calling DataProcessor.load_csv with filepath: {filepath}")
                 self.raw_data = DataProcessor.load_csv(filepath)
                 
                 if self.raw_data is None or self.raw_data.empty:
                     QMessageBox.warning(self, "Warning", "The loaded CSV file contains no data.")
                     self.statusBar().showMessage("CSV file loaded but contains no data", 5000)
+                    print("CSV file loaded but contains no data")
                     return
                     
-                print(f"Successfully loaded CSV with {len(self.raw_data)} rows and {len(self.raw_data.columns)} columns")
-                print(f"Columns: {self.raw_data.columns.tolist()}")
-                print(f"First row: {self.raw_data.iloc[0].tolist() if not self.raw_data.empty else 'N/A'}")
+                if self.debug:
+                    print(f"Successfully loaded CSV with {len(self.raw_data)} rows and {len(self.raw_data.columns)} columns")
+                    print(f"Columns: {self.raw_data.columns.tolist()}")
+                    print(f"First row: {self.raw_data.iloc[0].tolist() if not self.raw_data.empty else 'N/A'}")
                 
                 # Update UI with data
+                print("Updating UI with loaded data")
                 self.update_raw_data_view()
                 self.analyze_data()
                 
@@ -933,6 +1846,10 @@ class MainWindow(QMainWindow):
                 # Update file info label if it exists
                 if hasattr(self, 'file_info_label'):
                     self.file_info_label.setText(f"Loaded: {os.path.basename(filepath)} ({len(self.raw_data)} rows)")
+                
+                print("CSV file loaded successfully!")
+                print("========== End of load_csv_file ==========\n")
+                return True
                 
             except UnicodeDecodeError as e:
                 error_msg = f"Failed to decode CSV file. Please check the file encoding.\nError: {str(e)}"
@@ -949,15 +1866,22 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 error_msg = f"An unexpected error occurred while loading the CSV file:\n{str(e)}"
                 QMessageBox.critical(self, "Error", error_msg)
-                self.statusBar().showMessage("Unexpected error loading CSV file", 5000)
-                print(f"Unexpected error in load_csv: {str(e)}")
+                self.statusBar().showMessage("Error loading CSV file", 5000)
+                print(f"Unexpected error: {str(e)}")
+                import traceback
+                traceback.print_exc()
                 
         except Exception as e:
-            # Catch errors in the outer block too
-            error_msg = f"Error processing filepath: {str(e)}"
+            error_msg = f"An error occurred before loading the CSV file:\n{str(e)}"
             QMessageBox.critical(self, "Error", error_msg)
-            self.statusBar().showMessage("Error processing file path", 5000)
-            print(f"Error in load_csv_file outer block: {str(e)}")
+            self.statusBar().showMessage("Error preparing to load CSV file", 5000)
+            print(f"Error in load_csv_file: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+        print("CSV file loading failed")
+        print("========== End of load_csv_file (with errors) ==========\n")
+        return False
     
     def update_raw_data_view(self):
         """Update the raw data table view with current data"""
@@ -1056,79 +1980,206 @@ class MainWindow(QMainWindow):
             self.analysis_view.setColumnWidth(i, 150)
     
     def update_chart(self):
-        """Update the chart based on the selected chart type and data"""
-        if not hasattr(self, 'analysis_results') or self.analysis_results is None:
+        """Update the chart based on current selections"""
+        print("\n=== Starting update_chart ===")
+        
+        if self.analysis_results is None or not self.analysis_results:
+            print("No analysis results available")
             return
             
+        # Get selected parameters
         chart_type = self.chart_type_selector.currentText()
-        data_type = self.chart_data_selector.currentText()
+        x_column = self.chart_data_selector.currentText()
         
-        # Clear previous chart
-        self.mpl_canvas.fig.clear()
-        self.mpl_canvas.axes = self.mpl_canvas.fig.add_subplot(111)
-        
-        # Determine which data to use
-        if data_type == "Player":
-            df = self.analysis_results['player_totals'].head(10)
-            x_label = 'Player'
-            data_column = 'PLAYER'
-        elif data_type == "Source":
-            df = self.analysis_results['source_totals'].head(10)
-            x_label = 'Source'
-            data_column = 'SOURCE'
-        elif data_type == "Chest Type":
-            df = self.analysis_results['chest_totals'].head(10)
-            x_label = 'Chest Type'
-            data_column = 'CHEST'
+        # Auto-select the appropriate view based on x_column
+        if x_column == "PLAYER":
+            selected_view = "Player Total Scores"
+        elif x_column == "CHEST":
+            selected_view = "Scores by Chest Type"
+        elif x_column == "SOURCE":
+            selected_view = "Scores by Source"
         else:
+            selected_view = self.analysis_selector.currentText()
+        
+        # Update the analysis selector to match our selection
+        index = self.analysis_selector.findText(selected_view)
+        if index >= 0:
+            self.analysis_selector.setCurrentIndex(index)
+        
+        y_column = selected_view  # Use the view name as the y_column
+        
+        print(f"Chart parameters: type={chart_type}, x={x_column}, y={y_column}")
+        print(f"Selected view: {selected_view}")
+        
+        if not x_column or not y_column:
+            print("Missing x or y column selection")
             return
             
-        # Create chart based on type
-        if chart_type == "Bar Chart":
-            self.mpl_canvas.axes.barh(df[data_column], df['SCORE'], color=DARK_THEME['accent'])
-            self.mpl_canvas.axes.set_title(f'Top 10 {data_type}s by Score', color=DARK_THEME['foreground'])
-            self.mpl_canvas.axes.set_xlabel('Score', color=DARK_THEME['foreground'])
-            self.mpl_canvas.axes.set_ylabel(x_label, color=DARK_THEME['foreground'])
-            
-        elif chart_type == "Pie Chart":
-            wedges, texts, autotexts = self.mpl_canvas.axes.pie(
-                df['SCORE'], 
-                labels=df[data_column], 
-                autopct='%1.1f%%',
-                colors=[QColor(DARK_THEME['accent']).lighter(100 + i*20).name() for i in range(len(df))]
-            )
-            self.mpl_canvas.axes.set_title(f'Score Distribution by {data_type}', color=DARK_THEME['foreground'])
-            # Make text visible on dark background
-            for text in texts:
-                text.set_color(DARK_THEME['foreground'])
-            for autotext in autotexts:
-                autotext.set_color('white')
-                
-        elif chart_type == "Line Chart":
-            if data_type == "Player":
-                # For line chart with player data, create a time series
-                player_dates = self.raw_data.groupby(['DATE', 'PLAYER'])['SCORE'].sum().reset_index()
-                top_players = df[data_column].tolist()
-                for player in top_players[:5]:  # Limit to 5 players for clarity
-                    player_data = player_dates[player_dates['PLAYER'] == player]
-                    self.mpl_canvas.axes.plot(player_data['DATE'], player_data['SCORE'], marker='o', label=player)
-                self.mpl_canvas.axes.set_title(f'Score Timeline by Player', color=DARK_THEME['foreground'])
-                self.mpl_canvas.axes.set_xlabel('Date', color=DARK_THEME['foreground'])
-                self.mpl_canvas.axes.set_ylabel('Score', color=DARK_THEME['foreground'])
-                self.mpl_canvas.axes.legend()
-            else:
-                # For other data types, use a simple trend line
-                df = df.sort_values('SCORE')
-                self.mpl_canvas.axes.plot(df[data_column], df['SCORE'], marker='o', color=DARK_THEME['accent'])
-                self.mpl_canvas.axes.set_title(f'Score Trend by {data_type}', color=DARK_THEME['foreground'])
-                self.mpl_canvas.axes.set_xlabel(x_label, color=DARK_THEME['foreground'])
-                self.mpl_canvas.axes.set_ylabel('Score', color=DARK_THEME['foreground'])
-            
-            self.mpl_canvas.axes.tick_params(axis='x', rotation=45)
+        # Clear previous chart
+        self.mpl_canvas.axes.clear()
         
-        # Update the canvas
-        self.mpl_canvas.fig.tight_layout()
-        self.mpl_canvas.draw()
+        try:
+            # Get the appropriate DataFrame based on selected view
+            print(f"Available analysis results keys: {list(self.analysis_results.keys())}")
+            
+            if selected_view == "Player Total Scores":
+                data = self.analysis_results['player_totals']
+            elif selected_view == "Scores by Chest Type":
+                data = self.analysis_results['chest_totals']
+            elif selected_view == "Scores by Source":
+                data = self.analysis_results['source_totals']
+            elif selected_view == "Scores by Date":
+                data = self.analysis_results['date_totals']
+            elif selected_view == "Player Average Scores":
+                data = self.analysis_results['player_avg']
+            elif selected_view == "Chest Count by Player":
+                data = self.analysis_results['player_counts']
+            else:
+                print(f"Unknown view selection: {selected_view}")
+                return
+            
+            # Debug: print DataFrame info
+            print(f"DataFrame shape: {data.shape}")
+            print(f"DataFrame columns: {data.columns.tolist()}")
+            print(f"DataFrame sample:\n{data.head(3)}")
+            
+            # Check if the selected columns exist in the DataFrame
+            if x_column not in data.columns:
+                print(f"Error: x_column '{x_column}' not found in DataFrame columns")
+                QMessageBox.warning(self, "Chart Error", f"Column '{x_column}' not found in the data")
+                return
+            
+            # Make a copy to avoid modifying the original
+            data = data.copy()
+            
+            print(f"Creating {chart_type} with x={x_column}, y={y_column}")
+            
+            # Handle different chart types
+            if chart_type == "Bar Chart":
+                print("Generating bar chart...")
+                
+                # If we're using SCORE as y value (implicit), explicitly select it
+                y_column_actual = 'SCORE' if 'SCORE' in data.columns else 'COUNT'
+                
+                bars = data.plot(
+                    kind='bar', 
+                    x=x_column, 
+                    y=y_column_actual, 
+                    ax=self.mpl_canvas.axes,
+                    color=self.mpl_canvas.chart_colors[0],
+                    edgecolor=DARK_THEME['border'],
+                    width=0.7
+                )
+                
+                # Add value labels on top of bars
+                for bar in bars.patches:
+                    height = bar.get_height()
+                    self.mpl_canvas.axes.text(
+                        bar.get_x() + bar.get_width()/2.,
+                        height + 0.02 * max(data[y_column_actual]),
+                        f'{height:.1f}',
+                        ha='center', 
+                        va='bottom',
+                        color=DARK_THEME['foreground'],
+                        fontsize=9
+                    )
+                    
+            elif chart_type == "Line Chart":
+                print("Generating line chart...")
+                
+                # If we're using SCORE as y value (implicit), explicitly select it
+                y_column_actual = 'SCORE' if 'SCORE' in data.columns else 'COUNT'
+                
+                data.plot(
+                    kind='line', 
+                    x=x_column, 
+                    y=y_column_actual, 
+                    ax=self.mpl_canvas.axes,
+                    color=self.mpl_canvas.chart_colors[0],
+                    marker='o',
+                    markersize=5,
+                    linewidth=2
+                )
+                
+            elif chart_type == "Pie Chart":
+                print("Generating pie chart...")
+                
+                # For pie charts, use SCORE or COUNT as values
+                value_column = 'SCORE' if 'SCORE' in data.columns else 'COUNT'
+                
+                # Use all rows if we have a reasonable number, otherwise top 10
+                if len(data) > 10:
+                    print(f"Limiting pie chart to top 10 entries (total: {len(data)})")
+                    chart_data = data.sort_values(value_column, ascending=False).head(10)
+                else:
+                    chart_data = data
+                
+                # Create a series for the pie chart
+                pie_data = pd.Series(
+                    chart_data[value_column].values, 
+                    index=chart_data[x_column].values
+                )
+                
+                wedges, texts, autotexts = self.mpl_canvas.axes.pie(
+                    pie_data,
+                    labels=None,  # We'll add a legend instead
+                    autopct='%1.1f%%',
+                    shadow=False,
+                    startangle=90,
+                    colors=self.mpl_canvas.chart_colors
+                )
+                
+                # Enhance the appearance of percentage labels
+                for autotext in autotexts:
+                    autotext.set_color('white')
+                    autotext.set_fontsize(9)
+                    autotext.set_weight('bold')
+                
+                # Add a legend
+                self.mpl_canvas.axes.legend(
+                    wedges, 
+                    pie_data.index,
+                    title=x_column,
+                    loc="center left",
+                    bbox_to_anchor=(1, 0, 0.5, 1)
+                )
+                
+                self.mpl_canvas.axes.axis('equal')  # Equal aspect ratio ensures the pie is circular
+            
+            # Set chart title and labels
+            view_title = selected_view.replace(" by ", "\nby ")
+            self.mpl_canvas.axes.set_title(view_title, color=DARK_THEME['foreground'], fontsize=14)
+            
+            if chart_type != "Pie Chart":
+                self.mpl_canvas.axes.set_xlabel(x_column, color=DARK_THEME['foreground'])
+                
+                # Set y label based on the view
+                if "Count" in selected_view:
+                    self.mpl_canvas.axes.set_ylabel("Count", color=DARK_THEME['foreground'])
+                else:
+                    self.mpl_canvas.axes.set_ylabel("Score", color=DARK_THEME['foreground'])
+                
+                # Add grid
+                self.mpl_canvas.axes.grid(True, linestyle='--', alpha=0.7)
+                
+                # Rotate x tick labels if we have more than a few items
+                if len(data) > 5:
+                    self.mpl_canvas.axes.tick_params(axis='x', labelrotation=45)
+            
+            # Refresh the canvas
+            self.mpl_canvas.figure.tight_layout()
+            self.mpl_canvas.draw()
+            
+            print("Chart generated successfully")
+            
+        except Exception as e:
+            error_msg = f"Error creating chart: {str(e)}"
+            print(f"ERROR: {error_msg}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "Chart Error", error_msg)
+            
+        print("=== Finished update_chart ===\n")
     
     def update_filter_options(self):
         """Update filter options based on selected column"""
@@ -1192,94 +2243,27 @@ class MainWindow(QMainWindow):
         else:
             default_filename = "chest_count_by_player.csv"
         
+        # Get export directory from config
+        export_dir = self.config_manager.get_export_directory()
+        
+        # Create full path for default filename
+        default_path = os.path.join(export_dir, default_filename)
+        
         # Ask for save location
         filepath, _ = QFileDialog.getSaveFileName(
-            self, "Export Analysis", default_filename, "CSV Files (*.csv)"
+            self, "Export Analysis", default_path, "CSV Files (*.csv)"
         )
         
         if filepath:
             try:
+                # Save the directory for next time
+                self.config_manager.set('General', 'export_directory', str(Path(filepath).parent))
+                
                 df.to_csv(filepath, index=False)
                 self.statusBar().showMessage(f"Exported to {filepath}", 5000)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to export: {str(e)}")
                 self.statusBar().showMessage("Error exporting data", 5000)
-
-    def dragEnterEvent(self, event):
-        """Handle drag enter events at the MainWindow level"""
-        if self.debug:
-            print("MainWindow: dragEnterEvent")
-        
-        # Only accept when on the Import tab
-        if self.tabs.currentIndex() == 0 and event.mimeData().hasUrls():
-            # Accept the event to show the user that dropping is possible
-            event.acceptProposedAction()
-            # Update the drop area style if available
-            if hasattr(self, 'drop_area'):
-                self.drop_area._update_style(True)
-        else:
-            event.ignore()
-            
-    def dragMoveEvent(self, event):
-        """Handle drag move events at the MainWindow level"""
-        if self.debug:
-            print("MainWindow: dragMoveEvent")
-        
-        # Only accept when on the Import tab
-        if self.tabs.currentIndex() == 0 and event.mimeData().hasUrls():
-            event.acceptProposedAction()
-        else:
-            event.ignore()
-            
-    def dropEvent(self, event):
-        """Handle drop events at the MainWindow level"""
-        if self.debug:
-            print("MainWindow: dropEvent")
-            if hasattr(self, 'drop_area'):
-                self.drop_area.print_mime_data(event, "MainWindow dropEvent")
-        
-        # Reset drop area style if available
-        if hasattr(self, 'drop_area'):
-            self.drop_area._update_style(False)
-        
-        # Process the drop event when on the Import tab
-        if self.tabs.currentIndex() == 0 and event.mimeData().hasUrls():
-            urls = event.mimeData().urls()
-            
-            # Try different methods to get a valid file path
-            for url in urls:
-                try:
-                    # Method 1: Use toLocalFile
-                    filepath = url.toLocalFile()
-                    
-                    # Method 2: If that failed, try path()
-                    if not filepath and url.isLocalFile():
-                        filepath = url.path()
-                        # Remove leading slash on Windows if it exists
-                        if filepath.startswith('/') and ':' in filepath:
-                            filepath = filepath[1:]
-                    
-                    # Method 3: As a last resort, try to create a Path object
-                    if not filepath:
-                        # Try to get a string representation and convert it
-                        filepath = str(url.toString())
-                        if filepath.startswith('file:///'):
-                            filepath = filepath[8:]  # Remove file:///
-                    
-                    if self.debug:
-                        print(f"Extracted file path: {filepath}")
-                        print(f"File exists check: {os.path.exists(filepath)}")
-                    
-                    # Check if it's a CSV file
-                    if filepath.lower().endswith('.csv'):
-                        event.acceptProposedAction()
-                        self.load_csv_file(filepath)
-                        return True
-                except Exception as e:
-                    print(f"Error processing URL {url.toString()}: {str(e)}")
-        
-        event.ignore()
-        return False
 
 def main():
     """Application entry point"""
@@ -1288,7 +2272,10 @@ def main():
     # Apply dark theme
     StyleManager.apply_dark_theme(app)
     
+    # Create MainWindow
     window = MainWindow()
+    
+    # Show the window
     window.show()
     
     sys.exit(app.exec())
