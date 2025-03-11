@@ -22,7 +22,7 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import (
     QStandardItemModel, QStandardItem, QDropEvent, QDragEnterEvent,
-    QColor, QPalette, QFont, QIcon, QPixmap
+    QColor, QPalette, QFont, QIcon, QPixmap, QPainter
 )
 
 # Style constants
@@ -221,6 +221,9 @@ class DropArea(QWidget):
         # Enable drop acceptance
         self.setAcceptDrops(True)
         
+        # Debug flag for verbose logging
+        self.debug = True
+        
         layout = QVBoxLayout()
         
         self.label = QLabel("Drop CSV file here")
@@ -229,147 +232,204 @@ class DropArea(QWidget):
         font.setPointSize(14)
         self.label.setFont(font)
         
-        self.description = QLabel("or click to select a file")
+        self.description = QLabel("or use buttons below")
         self.description.setAlignment(Qt.AlignCenter)
         
+        # Add explicit import button
+        self.import_button = QPushButton("Select CSV File")
+        self.import_button.clicked.connect(self.open_file_dialog)
+        self.import_button.setMinimumHeight(40)
+        self.import_button.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {DARK_THEME['accent']};
+                color: white;
+                font-weight: bold;
+                font-size: 12px;
+                border-radius: 4px;
+                padding: 8px 16px;
+            }}
+            QPushButton:hover {{
+                background-color: {DARK_THEME['accent_hover']};
+            }}
+        """)
+        
+        # Create a QLabel with an icon for import
+        self.icon_label = QLabel()
+        self.icon_label.setAlignment(Qt.AlignCenter)
+        
+        # Create a pixmap with a document icon (using Unicode character)
+        icon_font = QFont()
+        icon_font.setPointSize(48)
+        icon_pixmap = QPixmap(64, 64)
+        icon_pixmap.fill(Qt.transparent)
+        painter = QPainter(icon_pixmap)
+        painter.setFont(icon_font)
+        painter.setPen(QColor(DARK_THEME['accent']))
+        painter.drawText(icon_pixmap.rect(), Qt.AlignCenter, "📄")
+        painter.end()
+        
+        self.icon_label.setPixmap(icon_pixmap)
+        self.icon_label.setMinimumHeight(80)
+        
         layout.addStretch()
+        layout.addWidget(self.icon_label)
         layout.addWidget(self.label)
         layout.addWidget(self.description)
+        layout.addSpacing(20)
+        layout.addWidget(self.import_button)
         layout.addStretch()
         
         self.setLayout(layout)
         self.setMinimumHeight(200)
         
         # Style the drop area
-        self.setStyleSheet(f"""
-            DropArea {{
-                border: 2px dashed {DARK_THEME['border']};
-                border-radius: 8px;
-                background-color: {DARK_THEME['card_bg']};
-            }}
-            DropArea:hover {{
-                border-color: {DARK_THEME['accent']};
-            }}
-        """)
+        self._update_style(False)
     
-    def mousePressEvent(self, event):
+    def open_file_dialog(self):
+        """Open a file dialog to select a CSV file"""
         filepath, _ = QFileDialog.getOpenFileName(
             self, "Open CSV File", "", "CSV Files (*.csv)"
         )
         if filepath:
             self.fileDropped.emit(filepath)
-    
-    # Override all drag and drop events with simplified but robust implementations
-    def dragEnterEvent(self, event):
-        print(f"DropArea: dragEnterEvent - mimeData formats: {event.mimeData().formats()}")
-        
-        # Accept any kind of drag to start with for better user experience
-        if event.mimeData().hasUrls():
-            urls = event.mimeData().urls()
-            print(f"DropArea: dragEnterEvent - URLs: {[url.toString() for url in urls]}")
             
-            # Check if any of the URLs are CSV files
-            has_csv = False
-            for url in urls:
-                filepath = url.toLocalFile()
-                print(f"DropArea: dragEnterEvent - Checking file: {filepath}")
-                if filepath.lower().endswith('.csv'):
-                    has_csv = True
-                    break
-                    
-            if has_csv:
-                print("DropArea: dragEnterEvent - Found CSV file, accepting")
-                event.acceptProposedAction()
-                self.setStyleSheet(f"""
-                    DropArea {{
-                        border: 2px dashed {DARK_THEME['accent']};
-                        border-radius: 8px;
-                        background-color: {DARK_THEME['card_bg']};
-                    }}
-                """)
-            else:
-                print("DropArea: dragEnterEvent - No CSV files found, ignoring")
-                event.ignore()
+    def _update_style(self, highlight=False):
+        """Update the style of the drop area with optional highlighting"""
+        if highlight:
+            self.setStyleSheet(f"""
+                DropArea {{
+                    border: 2px dashed {DARK_THEME['accent']};
+                    border-radius: 8px;
+                    background-color: {DARK_THEME['card_bg']};
+                }}
+            """)
         else:
-            print("DropArea: dragEnterEvent - No URLs in mimeData, ignoring")
-            event.ignore()
+            self.setStyleSheet(f"""
+                DropArea {{
+                    border: 2px dashed {DARK_THEME['border']};
+                    border-radius: 8px;
+                    background-color: {DARK_THEME['card_bg']};
+                }}
+                DropArea:hover {{
+                    border-color: {DARK_THEME['accent']};
+                }}
+            """)
+        
+    def mousePressEvent(self, event):
+        self.open_file_dialog()
+        
+    # Keep our existing drag and drop implementation
+    def dragEnterEvent(self, event):
+        if self.debug:
+            self.print_mime_data(event, "dragEnterEvent")
+        
+        try:
+            # Accept ANY drag initially - crucial for Windows to show drop is possible
+            has_urls = event.mimeData().hasUrls()
+            if has_urls:
+                event.acceptProposedAction()
+                self._update_style(True)
+                return
+                
+        except Exception as e:
+            print(f"ERROR in dragEnterEvent: {str(e)}")
+        
+        event.ignore()
         
     def dragMoveEvent(self, event):
-        print("DropArea: dragMoveEvent")
-        # Accept move event if it has URLs with CSV files
-        if event.mimeData().hasUrls():
-            has_csv = False
-            for url in event.mimeData().urls():
-                filepath = url.toLocalFile()
-                if filepath.lower().endswith('.csv'):
-                    has_csv = True
-                    break
-            
-            if has_csv:
+        if self.debug:
+            print("DropArea: dragMoveEvent")
+        
+        try:
+            # Continue accepting the drag
+            if event.mimeData().hasUrls():
                 event.acceptProposedAction()
-            else:
-                event.ignore()
-        else:
-            event.ignore()
+                return
+        except Exception as e:
+            print(f"ERROR in dragMoveEvent: {str(e)}")
+        
+        event.ignore()
         
     def dragLeaveEvent(self, event):
-        print("DropArea: dragLeaveEvent")
+        if self.debug:
+            print("DropArea: dragLeaveEvent")
+        
+        # Reset style
+        self._update_style(False)
         event.accept()
-        # Reset the style when drag leaves
-        self.setStyleSheet(f"""
-            DropArea {{
-                border: 2px dashed {DARK_THEME['border']};
-                border-radius: 8px;
-                background-color: {DARK_THEME['card_bg']};
-            }}
-            DropArea:hover {{
-                border-color: {DARK_THEME['accent']};
-            }}
-        """)
     
     def dropEvent(self, event):
-        print(f"DropArea: dropEvent - mimeData formats: {event.mimeData().formats()}")
+        if self.debug:
+            self.print_mime_data(event, "dropEvent")
         
-        # Process mimeData to extract file paths
-        if event.mimeData().hasUrls():
-            urls = event.mimeData().urls()
-            print(f"DropArea: dropEvent - URLs: {[url.toString() for url in urls]}")
-            
-            for url in urls:
-                filepath = url.toLocalFile()
-                print(f"DropArea: dropEvent - Processing file: {filepath}")
+        # Reset style first thing
+        self._update_style(False)
+        
+        # Process dropped files
+        try:
+            if event.mimeData().hasUrls():
+                urls = event.mimeData().urls()
                 
-                # Only process CSV files
-                if filepath.lower().endswith('.csv'):
-                    print(f"DropArea: dropEvent - Found CSV file: {filepath}")
-                    event.acceptProposedAction()
-                    
-                    # Reset style after successful drop
-                    self.setStyleSheet(f"""
-                        DropArea {{
-                            border: 2px dashed {DARK_THEME['border']};
-                            border-radius: 8px;
-                            background-color: {DARK_THEME['card_bg']};
-                        }}
-                        DropArea:hover {{
-                            border-color: {DARK_THEME['accent']};
-                        }}
-                    """)
-                    
-                    # Emit the signal with the file path
-                    print(f"DropArea: dropEvent - Emitting fileDropped signal with: {filepath}")
-                    self.fileDropped.emit(filepath)
-                    return  # Process only one CSV file
+                # Process each URL (file)
+                for url in urls:
+                    try:
+                        # Convert URL to local file path (different methods for robustness)
+                        filepath = url.toLocalFile()
+                        if not filepath and url.isLocalFile():
+                            filepath = url.path()
+                            # Remove leading slash on Windows if it exists
+                            if filepath.startswith('/') and ':' in filepath:
+                                filepath = filepath[1:]
+                        
+                        # Now check file type
+                        if filepath.lower().endswith('.csv'):
+                            # Accept the event
+                            event.setDropAction(Qt.CopyAction)
+                            event.acceptProposedAction()
+                            
+                            # Emit signal with file path
+                            self.fileDropped.emit(filepath)
+                            return True
+                    except Exception as e:
+                        print(f"ERROR processing URL {url.toString()}: {str(e)}")
+        except Exception as e:
+            print(f"ERROR in dropEvent: {str(e)}")
+        
+        event.ignore()
+        return False
+        
+    def print_mime_data(self, event, event_name):
+        """Debug helper to print detailed information about MIME data in an event"""
+        try:
+            print(f"\n=== {event_name} MIME Data Debug ===")
+            print(f"Event type: {event.type()}")
+            print(f"Drop action: {event.dropAction()}")
+            print(f"Proposed action: {event.proposedAction()}")
+            print(f"Possible actions: {event.possibleActions()}")
             
-            # If we get here, no CSV files were found
-            print("DropArea: dropEvent - No CSV files found among the dropped files")
-            event.ignore()
-        else:
-            print("DropArea: dropEvent - No URLs in mimeData, ignoring")
-            event.ignore()
-
+            mime_data = event.mimeData()
+            print(f"Has URLs: {mime_data.hasUrls()}")
+            print(f"MIME formats: {mime_data.formats()}")
+            
+            if mime_data.hasUrls():
+                urls = mime_data.urls()
+                print(f"URL count: {len(urls)}")
+                for i, url in enumerate(urls):
+                    print(f"  URL {i}: {url.toString()}")
+                    print(f"    isLocalFile: {url.isLocalFile()}")
+                    print(f"    toLocalFile: {url.toLocalFile()}")
+                    print(f"    path: {url.path()}")
+                    print(f"    scheme: {url.scheme()}")
+                    
+            print("=== End MIME Data Debug ===\n")
+        except Exception as e:
+            print(f"Error in print_mime_data: {str(e)}")
+            
 class DataProcessor:
     """Class to handle data processing logic"""
+    
+    # Debug flag
+    debug = True
     
     @staticmethod
     def load_csv(filepath):
@@ -377,25 +437,123 @@ class DataProcessor:
         Load CSV data from file and return as pandas DataFrame.
         
         Attempts different encodings if the default UTF-8 fails.
+        Provides detailed error logging for troubleshooting.
+        
+        Args:
+            filepath: Path to the CSV file
+            
+        Returns:
+            pandas.DataFrame: The loaded CSV data
+            
+        Raises:
+            ValueError: If the file can't be loaded for any reason
         """
+        if DataProcessor.debug:
+            print(f"DataProcessor.load_csv: Processing {filepath}")
+            print(f"File exists check: {os.path.exists(filepath)}")
+            
+        if not os.path.exists(filepath):
+            error_msg = f"File does not exist: {filepath}"
+            print(error_msg)
+            raise ValueError(error_msg)
+            
+        if not os.path.isfile(filepath):
+            error_msg = f"Path is not a file: {filepath}"
+            print(error_msg)
+            raise ValueError(error_msg)
+            
+        # Check file size
+        try:
+            file_size = os.path.getsize(filepath)
+            if DataProcessor.debug:
+                print(f"File size: {file_size} bytes")
+                
+            if file_size == 0:
+                error_msg = "File is empty (0 bytes)"
+                print(error_msg)
+                raise ValueError(error_msg)
+        except Exception as e:
+            print(f"Error checking file size: {str(e)}")
+            # Continue anyway - might still be loadable
+        
+        # Try to read the first few bytes to check if file is accessible
+        try:
+            with open(filepath, 'rb') as f:
+                first_bytes = f.read(16)
+                if DataProcessor.debug:
+                    print(f"First bytes: {first_bytes}")
+        except Exception as e:
+            error_msg = f"Failed to open file: {str(e)}"
+            print(error_msg)
+            raise ValueError(error_msg)
+        
+        # List of encodings to try, in order of preference
         encodings_to_try = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252', 'windows-1252']
         
+        last_error = None
         for encoding in encodings_to_try:
             try:
+                if DataProcessor.debug:
+                    print(f"Trying to load with encoding: {encoding}")
+                
+                # Try to read with pandas
                 df = pd.read_csv(filepath, encoding=encoding)
+                
+                if DataProcessor.debug:
+                    print(f"Successfully loaded with encoding: {encoding}")
+                    print(f"DataFrame shape: {df.shape}")
+                    print(f"Columns: {df.columns.tolist()}")
+                    print(f"First row: {df.iloc[0].tolist() if not df.empty else 'Empty DataFrame'}")
+                
                 # Remove CLAN column as per requirements
                 if 'CLAN' in df.columns:
                     df = df.drop(columns=['CLAN'])
+                    if DataProcessor.debug:
+                        print("Removed CLAN column")
+                
+                # Check if required columns are present
+                required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
+                missing_columns = [col for col in required_columns if col not in df.columns]
+                
+                if missing_columns:
+                    warning_msg = f"Warning: Missing required columns: {missing_columns}"
+                    print(warning_msg)
+                    # Continue anyway - user might want to view the data regardless
+                
                 return df
-            except UnicodeDecodeError:
-                # Try the next encoding
+                
+            except UnicodeDecodeError as e:
+                # Log the specific encoding error and try the next one
+                if DataProcessor.debug:
+                    print(f"UnicodeDecodeError with {encoding}: {str(e)}")
+                last_error = e
                 continue
+                
+            except pd.errors.EmptyDataError as e:
+                # File is empty or contains no data
+                error_msg = f"CSV file is empty or contains no parsable data: {str(e)}"
+                print(error_msg)
+                raise ValueError(error_msg)
+                
+            except pd.errors.ParserError as e:
+                # File doesn't seem to be a valid CSV
+                error_msg = f"Not a valid CSV file - parser error: {str(e)}"
+                print(error_msg)
+                raise ValueError(error_msg)
+                
             except Exception as e:
-                # For other exceptions, raise immediately
-                raise ValueError(f"Error loading CSV file: {str(e)}")
+                # For other exceptions, log and raise immediately
+                error_msg = f"Error loading CSV file with {encoding}: {str(e)}"
+                print(error_msg)
+                raise ValueError(error_msg)
                 
         # If we've tried all encodings and none worked
-        raise ValueError("Could not decode the CSV file with any supported encoding. Please check the file format.")
+        error_msg = "Could not decode the CSV file with any supported encoding. Please check the file format."
+        if last_error:
+            error_msg += f" Last error: {str(last_error)}"
+            
+        print(error_msg)
+        raise ValueError(error_msg)
     
     @staticmethod
     def analyze_data(df):
@@ -448,11 +606,16 @@ class MainWindow(QMainWindow):
         # Enable drop acceptance at the MainWindow level
         self.setAcceptDrops(True)
         
+        # Debug flag for verbose logging
+        self.debug = True
+        
         self.raw_data = None
         self.raw_data_model = None
         self.raw_data_proxy_model = None
+        self.current_filepath = None
         
         self.setup_ui()
+        self.setup_menu()
         self.setWindowTitle("Total Battle Analyzer")
         self.resize(1200, 800)
         
@@ -482,6 +645,56 @@ class MainWindow(QMainWindow):
         # Create status bar
         self.statusBar().showMessage("Ready")
     
+    def setup_menu(self):
+        """Set up the application menu"""
+        # Create menu bar
+        menu_bar = self.menuBar()
+        
+        # Create File menu
+        file_menu = menu_bar.addMenu("&File")
+        
+        # Add Import action
+        import_action = file_menu.addAction("&Import CSV File...")
+        import_action.setShortcut("Ctrl+O")
+        import_action.triggered.connect(self.open_file_dialog)
+        
+        # Add Export action
+        export_action = file_menu.addAction("&Export Results...")
+        export_action.setShortcut("Ctrl+S")
+        export_action.triggered.connect(self.export_current_analysis)
+        
+        # Add Exit action
+        exit_action = file_menu.addAction("E&xit")
+        exit_action.setShortcut("Ctrl+Q")
+        exit_action.triggered.connect(self.close)
+        
+        # Create Help menu
+        help_menu = menu_bar.addMenu("&Help")
+        
+        # Add About action
+        about_action = help_menu.addAction("&About")
+        about_action.triggered.connect(self.show_about_dialog)
+    
+    def open_file_dialog(self):
+        """Open a file dialog to select a CSV file"""
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Open CSV File", "", "CSV Files (*.csv)"
+        )
+        if filepath:
+            self.load_csv_file(filepath)
+    
+    def show_about_dialog(self):
+        """Show the about dialog"""
+        QMessageBox.about(
+            self, 
+            "About Total Battle Analyzer",
+            """
+            <h1>Total Battle Analyzer</h1>
+            <p>A tool for analyzing data from the Total Battle game.</p>
+            <p>Version 1.0</p>
+            """
+        )
+    
     def setup_import_tab(self):
         """Setup the import tab UI"""
         import_tab = QWidget()
@@ -497,7 +710,7 @@ class MainWindow(QMainWindow):
         
         # Add instructions
         instructions = QLabel(
-            "Import your CSV file by dragging and dropping it below, or click to select a file."
+            "Import your CSV file by dragging and dropping it below, clicking the area, or using the Import button in the File menu."
         )
         instructions.setAlignment(Qt.AlignCenter)
         instructions.setWordWrap(True)
@@ -680,50 +893,72 @@ class MainWindow(QMainWindow):
     
     def load_csv_file(self, filepath):
         """Load CSV file and display data"""
-        print(f"Loading CSV file: {filepath}")
-        self.statusBar().showMessage(f"Loading {filepath}...", 2000)
-        
         try:
-            # Load CSV data
-            self.raw_data = DataProcessor.load_csv(filepath)
+            # Normalize filepath for Windows
+            filepath = Path(filepath).resolve().as_posix()
             
-            if self.raw_data is None or self.raw_data.empty:
-                QMessageBox.warning(self, "Warning", "The loaded CSV file contains no data.")
-                self.statusBar().showMessage("CSV file loaded but contains no data", 5000)
-                return
+            if self.debug:
+                print(f"Loading CSV file: {filepath}")
+                print(f"File exists: {os.path.exists(filepath)}")
+                print(f"File readable: {os.access(filepath, os.R_OK)}")
+                print(f"File size: {os.path.getsize(filepath) if os.path.exists(filepath) else 'N/A'}")
+            
+            self.statusBar().showMessage(f"Loading {filepath}...", 2000)
+            
+            try:
+                # Load CSV data with improved error handling
+                self.raw_data = DataProcessor.load_csv(filepath)
                 
-            print(f"Successfully loaded CSV with {len(self.raw_data)} rows and {len(self.raw_data.columns)} columns")
-            
-            # Update UI with data
-            self.update_raw_data_view()
-            self.analyze_data()
-            
-            # Switch to Raw Data tab
-            self.tabs.setCurrentIndex(1)
-            
-            self.statusBar().showMessage(f"Loaded {len(self.raw_data)} records from {filepath}", 5000)
-            
-            # Store the file path
-            self.current_filepath = filepath
-            
-        except UnicodeDecodeError as e:
-            error_msg = f"Failed to decode CSV file. Please check the file encoding.\nError: {str(e)}"
-            QMessageBox.critical(self, "Error", error_msg)
-            self.statusBar().showMessage("Error loading CSV file: encoding issue", 5000)
-            print(f"UnicodeDecodeError: {str(e)}")
-            
-        except ValueError as e:
-            error_msg = f"Failed to load CSV file: {str(e)}"
-            QMessageBox.critical(self, "Error", error_msg)
-            self.statusBar().showMessage("Error loading CSV file", 5000)
-            print(f"ValueError: {str(e)}")
-            
+                if self.raw_data is None or self.raw_data.empty:
+                    QMessageBox.warning(self, "Warning", "The loaded CSV file contains no data.")
+                    self.statusBar().showMessage("CSV file loaded but contains no data", 5000)
+                    return
+                    
+                print(f"Successfully loaded CSV with {len(self.raw_data)} rows and {len(self.raw_data.columns)} columns")
+                print(f"Columns: {self.raw_data.columns.tolist()}")
+                print(f"First row: {self.raw_data.iloc[0].tolist() if not self.raw_data.empty else 'N/A'}")
+                
+                # Update UI with data
+                self.update_raw_data_view()
+                self.analyze_data()
+                
+                # Switch to Raw Data tab
+                self.tabs.setCurrentIndex(1)
+                
+                self.statusBar().showMessage(f"Loaded {len(self.raw_data)} records from {filepath}", 5000)
+                
+                # Store the file path
+                self.current_filepath = filepath
+                
+                # Update file info label if it exists
+                if hasattr(self, 'file_info_label'):
+                    self.file_info_label.setText(f"Loaded: {os.path.basename(filepath)} ({len(self.raw_data)} rows)")
+                
+            except UnicodeDecodeError as e:
+                error_msg = f"Failed to decode CSV file. Please check the file encoding.\nError: {str(e)}"
+                QMessageBox.critical(self, "Error", error_msg)
+                self.statusBar().showMessage("Error loading CSV file: encoding issue", 5000)
+                print(f"UnicodeDecodeError: {str(e)}")
+                
+            except ValueError as e:
+                error_msg = f"Failed to load CSV file: {str(e)}"
+                QMessageBox.critical(self, "Error", error_msg)
+                self.statusBar().showMessage("Error loading CSV file", 5000)
+                print(f"ValueError: {str(e)}")
+                
+            except Exception as e:
+                error_msg = f"An unexpected error occurred while loading the CSV file:\n{str(e)}"
+                QMessageBox.critical(self, "Error", error_msg)
+                self.statusBar().showMessage("Unexpected error loading CSV file", 5000)
+                print(f"Unexpected error in load_csv: {str(e)}")
+                
         except Exception as e:
-            error_msg = f"An unexpected error occurred while loading the CSV file:\n{str(e)}"
+            # Catch errors in the outer block too
+            error_msg = f"Error processing filepath: {str(e)}"
             QMessageBox.critical(self, "Error", error_msg)
-            self.statusBar().showMessage("Unexpected error loading CSV file", 5000)
-            print(f"Unexpected error: {str(e)}")
-            
+            self.statusBar().showMessage("Error processing file path", 5000)
+            print(f"Error in load_csv_file outer block: {str(e)}")
+    
     def update_raw_data_view(self):
         """Update the raw data table view with current data"""
         if self.raw_data is None or self.raw_data.empty:
@@ -970,88 +1205,81 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to export: {str(e)}")
                 self.statusBar().showMessage("Error exporting data", 5000)
 
-    # Forward drag events to the drop area if it exists
     def dragEnterEvent(self, event):
-        print(f"MainWindow: dragEnterEvent - mimeData formats: {event.mimeData().formats()}")
+        """Handle drag enter events at the MainWindow level"""
+        if self.debug:
+            print("MainWindow: dragEnterEvent")
         
-        # Only handle drag events when on the Import tab
-        if self.tabs.currentIndex() == 0:
-            if event.mimeData().hasUrls():
-                # Check if any of the URLs are CSV files
-                has_csv = False
-                for url in event.mimeData().urls():
-                    filepath = url.toLocalFile()
-                    print(f"MainWindow: dragEnterEvent - Checking file: {filepath}")
-                    if filepath.lower().endswith('.csv'):
-                        has_csv = True
-                        break
-                        
-                if has_csv:
-                    print("MainWindow: dragEnterEvent - Found CSV file, accepting")
-                    event.acceptProposedAction()
-                else:
-                    print("MainWindow: dragEnterEvent - No CSV files, ignoring")
-                    event.ignore()
-            else:
-                print("MainWindow: dragEnterEvent - No URLs in mimeData, ignoring")
-                event.ignore()
+        # Only accept when on the Import tab
+        if self.tabs.currentIndex() == 0 and event.mimeData().hasUrls():
+            # Accept the event to show the user that dropping is possible
+            event.acceptProposedAction()
+            # Update the drop area style if available
+            if hasattr(self, 'drop_area'):
+                self.drop_area._update_style(True)
         else:
-            print("MainWindow: dragEnterEvent - Not on Import tab, ignoring")
             event.ignore()
             
     def dragMoveEvent(self, event):
-        print("MainWindow: dragMoveEvent")
+        """Handle drag move events at the MainWindow level"""
+        if self.debug:
+            print("MainWindow: dragMoveEvent")
         
-        # Only handle drag events when on the Import tab
-        if self.tabs.currentIndex() == 0:
-            if event.mimeData().hasUrls():
-                # Check if any of the URLs are CSV files
-                has_csv = False
-                for url in event.mimeData().urls():
-                    filepath = url.toLocalFile()
-                    if filepath.lower().endswith('.csv'):
-                        has_csv = True
-                        break
-                        
-                if has_csv:
-                    event.acceptProposedAction()
-                else:
-                    event.ignore()
-            else:
-                event.ignore()
+        # Only accept when on the Import tab
+        if self.tabs.currentIndex() == 0 and event.mimeData().hasUrls():
+            event.acceptProposedAction()
         else:
             event.ignore()
             
     def dropEvent(self, event):
-        print(f"MainWindow: dropEvent - mimeData formats: {event.mimeData().formats()}")
+        """Handle drop events at the MainWindow level"""
+        if self.debug:
+            print("MainWindow: dropEvent")
+            if hasattr(self, 'drop_area'):
+                self.drop_area.print_mime_data(event, "MainWindow dropEvent")
         
-        # Only handle drop events when on the Import tab
-        if self.tabs.currentIndex() == 0:
-            if event.mimeData().hasUrls():
-                # Process all URLs and find the first CSV file
-                for url in event.mimeData().urls():
+        # Reset drop area style if available
+        if hasattr(self, 'drop_area'):
+            self.drop_area._update_style(False)
+        
+        # Process the drop event when on the Import tab
+        if self.tabs.currentIndex() == 0 and event.mimeData().hasUrls():
+            urls = event.mimeData().urls()
+            
+            # Try different methods to get a valid file path
+            for url in urls:
+                try:
+                    # Method 1: Use toLocalFile
                     filepath = url.toLocalFile()
-                    print(f"MainWindow: dropEvent - Processing file: {filepath}")
                     
+                    # Method 2: If that failed, try path()
+                    if not filepath and url.isLocalFile():
+                        filepath = url.path()
+                        # Remove leading slash on Windows if it exists
+                        if filepath.startswith('/') and ':' in filepath:
+                            filepath = filepath[1:]
+                    
+                    # Method 3: As a last resort, try to create a Path object
+                    if not filepath:
+                        # Try to get a string representation and convert it
+                        filepath = str(url.toString())
+                        if filepath.startswith('file:///'):
+                            filepath = filepath[8:]  # Remove file:///
+                    
+                    if self.debug:
+                        print(f"Extracted file path: {filepath}")
+                        print(f"File exists check: {os.path.exists(filepath)}")
+                    
+                    # Check if it's a CSV file
                     if filepath.lower().endswith('.csv'):
-                        print(f"MainWindow: dropEvent - Found CSV file: {filepath}")
-                        # Accept the drop operation
                         event.acceptProposedAction()
-                        
-                        # Load the CSV file
-                        print(f"MainWindow: dropEvent - Loading CSV file: {filepath}")
                         self.load_csv_file(filepath)
-                        return  # Process only the first CSV file
-                
-                # If we reach here, no CSV files were found
-                print("MainWindow: dropEvent - No CSV files found, ignoring")
-                event.ignore()
-            else:
-                print("MainWindow: dropEvent - No URLs in mimeData, ignoring")
-                event.ignore()
-        else:
-            print("MainWindow: dropEvent - Not on Import tab, ignoring")
-            event.ignore()
+                        return True
+                except Exception as e:
+                    print(f"Error processing URL {url.toString()}: {str(e)}")
+        
+        event.ignore()
+        return False
 
 def main():
     """Application entry point"""

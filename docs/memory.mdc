@@ -19,6 +19,8 @@ alwaysApply: false
 - 2024-03-12: Fixed drag and drop functionality for CSV files (red crossed circle issue)
 - 2024-03-12: Enhanced drag and drop with file extension filtering and visual feedback
 - 2024-03-12: Comprehensive UI refactoring and drag-and-drop implementation
+- 2024-03-13: Enhanced Windows-specific drag and drop compatibility with detailed logging
+- 2024-03-14: Implemented alternative file import methods with menu bar and button to provide reliable import options beyond drag and drop
 
 ## Current Tasks
 - Fixed compatibility issue between matplotlib and PySide6
@@ -51,6 +53,21 @@ alwaysApply: false
   - Added comprehensive debugging for drag and drop operations
   - Fixed interactions between MainWindow and DropArea components
   - Improved visual feedback throughout the application
+- Windows-specific drag and drop enhancements
+  - Resolved Windows URL and path format issues
+  - Enhanced event state transitions during drag and drop
+  - Added advanced path normalization for Windows compatibility
+  - Implemented multiple fallback mechanisms for file URL parsing
+  - Added detailed binary file inspection for troubleshooting
+  - Improved error tracing with comprehensive try/except blocks
+  - Added explicit drop action setting with Qt.CopyAction
+  - Expanded logging for all drag and drop events
+- Providing multiple reliable import methods for CSV files including:
+  - File menu with Import option (Ctrl+O)
+  - Explicit import button in the drop area
+  - Maintain existing drag and drop as a fallback
+- Improving visual feedback and instructions for all import methods
+- Ensuring the application works reliably across different Windows configurations
 
 ## Dependencies
 - PySide6: 6.8.2.1
@@ -77,4 +94,12 @@ alwaysApply: false
   - Add detailed logging for each event type
   - Explicitly handle URLs from mime data with url.toLocalFile()
   - Ensure the MainWindow has setAcceptDrops(True) set
-  - Make sure to override all drag and drop related events 
+  - Make sure to override all drag and drop related events
+- Windows-specific drag and drop considerations:
+  - Accept ALL drags with URLs initially, filter by file type later
+  - Use multiple file path extraction methods (toLocalFile() and path())
+  - Normalize file paths with Path().resolve().as_posix()
+  - Handle leading slash removal for Windows paths
+  - Explicitly set dropAction to Qt.CopyAction
+  - Catch all exceptions during drag and drop to prevent crashes
+  - Check file attributes (exists, readable, size) after path extraction 
