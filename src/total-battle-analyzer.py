@@ -18,12 +18,12 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QTableView, QPushButton, QTabWidget, QLabel, QFileDialog,
     QComboBox, QGroupBox, QSplitter, QMessageBox, QFrame, QHeaderView,
-    QLineEdit
+    QLineEdit, QListWidget, QDateEdit, QCheckBox, QListWidgetItem
 )
 from PySide6.QtCore import (
     Qt, QAbstractTableModel, QModelIndex, Signal, QMimeData, 
     QUrl, QSize, Slot, QSortFilterProxyModel, QObject, QEvent, QTimer,
-    QSettings, QStandardPaths
+    QSettings, QStandardPaths, QDate
 )
 from PySide6.QtGui import (
     QStandardItemModel, QStandardItem, QDropEvent, QDragEnterEvent,
@@ -68,14 +68,37 @@ class ConfigManager:
         self.config = configparser.ConfigParser()
         self.config_file = Path("config.ini")
         
-        # Create the application directory structure if it doesn't exist
-        self.app_dir = Path.cwd()
+        # Use the project root directory and its existing import/export folders
+        # First try to find the project root by checking for common project files
+        current_dir = Path.cwd()
+        
+        # Determine if we're in the src directory and need to go up one level
+        if current_dir.name == 'src':
+            self.app_dir = current_dir.parent
+            print(f"Detected running from src directory, using parent as project root: {self.app_dir}")
+        else:
+            self.app_dir = current_dir
+            print(f"Using current directory as project root: {self.app_dir}")
+        
+        # Reference existing import and export folders in the project root
         self.import_dir = self.app_dir / "import"
         self.export_dir = self.app_dir / "export"
         
-        # Create directories if they don't exist
-        self.import_dir.mkdir(exist_ok=True)
-        self.export_dir.mkdir(exist_ok=True)
+        # Verify these directories exist and log a message
+        if not self.import_dir.exists():
+            print(f"Warning: Import directory does not exist at {self.import_dir}. Using fallback.")
+            # Fallback to creating a temporary directory if needed
+            self.import_dir = self.app_dir / "import"
+            self.import_dir.mkdir(exist_ok=True)
+        
+        if not self.export_dir.exists():
+            print(f"Warning: Export directory does not exist at {self.export_dir}. Using fallback.")
+            # Fallback to creating a temporary directory if needed
+            self.export_dir = self.app_dir / "export"
+            self.export_dir.mkdir(exist_ok=True)
+            
+        print(f"Using import directory: {self.import_dir}")
+        print(f"Using export directory: {self.export_dir}")
         
         # Default settings
         self.default_settings = {
@@ -1606,17 +1629,65 @@ class MainWindow(QMainWindow):
     def setup_raw_data_tab(self):
         """Setup the raw data tab UI"""
         raw_data_tab = QWidget()
-        layout = QVBoxLayout()
+        main_layout = QVBoxLayout()
+        
+        # Create a splitter for left/right division
+        self.raw_data_splitter = QSplitter(Qt.Horizontal)
+        
+        # Create left side widget (filters + table)
+        left_widget = QWidget()
+        left_layout = QVBoxLayout()
+        left_widget.setLayout(left_layout)
         
         # Create filter section
         filter_group = QGroupBox("Filter Data")
-        filter_layout = QHBoxLayout()
+        filter_layout = QVBoxLayout()
+        
+        # Create horizontal layout for column filters
+        column_filter_layout = QHBoxLayout()
         
         # Column selector
         self.column_selector = QComboBox()
         
-        # Value selector
-        self.value_selector = QComboBox()
+        # Add widgets to column filter layout
+        column_filter_layout.addWidget(QLabel("Column:"))
+        column_filter_layout.addWidget(self.column_selector)
+        
+        # Checkbox to show/hide specific values selection
+        self.show_value_selection = QCheckBox("Select specific values")
+        self.show_value_selection.setChecked(False)
+        self.show_value_selection.stateChanged.connect(self.toggle_value_selection)
+        column_filter_layout.addWidget(self.show_value_selection)
+        
+        column_filter_layout.addStretch()
+        
+        # Add date range filter section
+        date_filter_layout = QHBoxLayout()
+        date_filter_layout.addWidget(QLabel("Date Range:"))
+        
+        # Start date picker
+        self.start_date_edit = QDateEdit()
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.start_date_edit.setDate(QDate.currentDate().addDays(-30))  # Default to 30 days ago
+        
+        # End date picker
+        self.end_date_edit = QDateEdit()
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.end_date_edit.setDate(QDate.currentDate())  # Default to today
+        
+        date_filter_layout.addWidget(self.start_date_edit)
+        date_filter_layout.addWidget(QLabel("to"))
+        date_filter_layout.addWidget(self.end_date_edit)
+        
+        # Date filter enabled checkbox
+        self.date_filter_enabled = QCheckBox("Enable Date Filter")
+        date_filter_layout.addWidget(self.date_filter_enabled)
+        date_filter_layout.addStretch()
+        
+        # Buttons layout
+        button_layout = QHBoxLayout()
         
         # Apply filter button
         self.apply_filter_button = QPushButton("Apply Filter")
@@ -1624,15 +1695,22 @@ class MainWindow(QMainWindow):
         
         # Clear filter button
         self.clear_filter_button = QPushButton("Clear Filter")
-        self.clear_filter_button.clicked.connect(lambda: self.raw_data_proxy_model.setFilterFixedString("") if hasattr(self, 'raw_data_proxy_model') else None)
+        self.clear_filter_button.clicked.connect(self.clear_filters)
         
-        # Add widgets to filter layout
-        filter_layout.addWidget(QLabel("Column:"))
-        filter_layout.addWidget(self.column_selector)
-        filter_layout.addWidget(QLabel("Value:"))
-        filter_layout.addWidget(self.value_selector)
-        filter_layout.addWidget(self.apply_filter_button)
-        filter_layout.addWidget(self.clear_filter_button)
+        button_layout.addWidget(self.apply_filter_button)
+        button_layout.addWidget(self.clear_filter_button)
+        
+        # Export button
+        self.export_raw_data_button = QPushButton("Export to CSV")
+        self.export_raw_data_button.clicked.connect(self.export_raw_data)
+        button_layout.addWidget(self.export_raw_data_button)
+        
+        button_layout.addStretch()
+        
+        # Add all layouts to the filter layout
+        filter_layout.addLayout(column_filter_layout)
+        filter_layout.addLayout(date_filter_layout)
+        filter_layout.addLayout(button_layout)
         
         filter_group.setLayout(filter_layout)
         
@@ -1646,12 +1724,60 @@ class MainWindow(QMainWindow):
         # Connect column selection to update value options
         self.column_selector.currentIndexChanged.connect(self.update_filter_options)
         
-        # Add widgets to main layout
-        layout.addWidget(filter_group)
-        layout.addWidget(self.raw_data_table)
+        # Add widgets to left layout
+        left_layout.addWidget(filter_group)
+        left_layout.addWidget(self.raw_data_table)
+        
+        # Create right side widget (value selection)
+        right_widget = QWidget()
+        right_layout = QVBoxLayout()
+        right_widget.setLayout(right_layout)
+        
+        # Value selection group
+        value_group = QGroupBox("Value Selection")
+        value_layout = QVBoxLayout()
+        
+        # Select/Deselect All buttons
+        select_buttons_layout = QHBoxLayout()
+        
+        self.select_all_button = QPushButton("Select All")
+        self.select_all_button.clicked.connect(self.select_all_values)
+        
+        self.deselect_all_button = QPushButton("Deselect All")
+        self.deselect_all_button.clicked.connect(self.deselect_all_values)
+        
+        select_buttons_layout.addWidget(self.select_all_button)
+        select_buttons_layout.addWidget(self.deselect_all_button)
+        select_buttons_layout.addStretch()
+        
+        value_layout.addLayout(select_buttons_layout)
+        
+        # Create list widget for value selection
+        self.value_list = QListWidget()
+        self.value_list.setSelectionMode(QListWidget.MultiSelection)
+        self.value_list.setMinimumHeight(100)
+        
+        value_layout.addWidget(QLabel("Values (select multiple):"))
+        value_layout.addWidget(self.value_list)
+        
+        value_group.setLayout(value_layout)
+        right_layout.addWidget(value_group)
+        
+        # Add left and right widgets to splitter
+        self.raw_data_splitter.addWidget(left_widget)
+        self.raw_data_splitter.addWidget(right_widget)
+        
+        # Set initial sizes (left side gets more space)
+        self.raw_data_splitter.setSizes([700, 300])
+        
+        # Hide right side initially (will show when checkbox is checked)
+        right_widget.hide()
+        
+        # Add splitter to main layout
+        main_layout.addWidget(self.raw_data_splitter)
         
         # Set layout for raw data tab
-        raw_data_tab.setLayout(layout)
+        raw_data_tab.setLayout(main_layout)
         
         # Add to tabs
         self.tabs.addTab(raw_data_tab, "Raw Data")
@@ -1892,15 +2018,22 @@ class MainWindow(QMainWindow):
         headers = self.raw_data.columns.tolist()
         data = [row.tolist() for _, row in self.raw_data.iterrows()]
         
-        # Create table model
-        self.raw_data_model = CustomTableModel(data, headers)
-        
-        # Create proxy model for filtering
-        self.raw_data_proxy_model = QSortFilterProxyModel()
-        self.raw_data_proxy_model.setSourceModel(self.raw_data_model)
-        
-        # Set the model on the table view
-        self.raw_data_table.setModel(self.raw_data_proxy_model)
+        # Create or update table model
+        if not hasattr(self, 'raw_data_model') or self.raw_data_model is None:
+            print("Creating new raw data model")
+            # Create new model
+            self.raw_data_model = CustomTableModel(data, headers)
+            
+            # Create proxy model for filtering
+            self.raw_data_proxy_model = QSortFilterProxyModel()
+            self.raw_data_proxy_model.setSourceModel(self.raw_data_model)
+            
+            # Set the model on the table view
+            self.raw_data_table.setModel(self.raw_data_proxy_model)
+        else:
+            print("Updating existing raw data model")
+            # Update existing model data
+            self.raw_data_model.setData(data, headers)
         
         # Enable sorting
         self.raw_data_table.setSortingEnabled(True)
@@ -1911,8 +2044,29 @@ class MainWindow(QMainWindow):
             
         # Update filter options
         if hasattr(self, 'column_selector'):
+            # Store the current selection
+            current_selection = self.column_selector.currentText() if self.column_selector.count() > 0 else ""
+            
+            # Clear and repopulate
             self.column_selector.clear()
             self.column_selector.addItems(headers)
+            
+            # Restore selection if possible
+            if current_selection:
+                index = self.column_selector.findText(current_selection)
+                if index >= 0:
+                    self.column_selector.setCurrentIndex(index)
+            
+            # Make sure the value selection panel is hidden by default
+            if hasattr(self, 'show_value_selection'):
+                self.show_value_selection.setChecked(False)
+                
+                # Make sure the right widget is hidden
+                right_widget = self.raw_data_splitter.widget(1)
+                if right_widget:
+                    right_widget.hide()
+            
+            # Update filter options for the selected column - this will select all values by default
             self.update_filter_options()
     
     def analyze_data(self):
@@ -2189,28 +2343,90 @@ class MainWindow(QMainWindow):
         column = self.column_selector.currentText()
         unique_values = sorted(self.raw_data[column].unique())
         
-        # Update filter combobox
-        self.value_selector.clear()
-        self.value_selector.addItem("All")  # Option to show all
-        self.value_selector.addItems([str(val) for val in unique_values])
+        # Update list widget for multiple selection
+        self.value_list.clear()
+        for val in unique_values:
+            item = QListWidgetItem(str(val))
+            self.value_list.addItem(item)
+            # Select all values by default
+            item.setSelected(True)
+    
+    def clear_filters(self):
+        """Clear all filters"""
+        if not hasattr(self, 'raw_data_proxy_model'):
+            return
+            
+        # Hide value selection panel
+        self.show_value_selection.setChecked(False)
+        
+        # Reset date filter
+        self.date_filter_enabled.setChecked(False)
+        self.start_date_edit.setDate(QDate.currentDate().addDays(-30))
+        self.end_date_edit.setDate(QDate.currentDate())
+        
+        # Reset to original data
+        if hasattr(self, 'raw_data') and self.raw_data is not None:
+            self.update_raw_data_view()
+            
+        self.statusBar().showMessage("Filters cleared", 3000)
     
     def filter_raw_data(self):
         """Filter raw data based on selected criteria"""
         if self.raw_data is None or self.raw_data.empty or self.column_selector.currentText() == "":
             return
             
-        filter_text = self.value_selector.currentText()
-        column_index = self.column_selector.currentIndex()
+        # Get the current filter state
+        column_name = self.column_selector.currentText()
+        date_filter_enabled = self.date_filter_enabled.isChecked()
+        value_selection_enabled = self.show_value_selection.isChecked()
         
-        # If "All" selected, clear filter
-        if filter_text == "All":
-            # Use the current API for clearing filters in PySide6
-            self.raw_data_proxy_model.setFilterFixedString("")
+        # Start with a copy of the original data
+        filtered_data = self.raw_data.copy()
+        
+        # If value selection is enabled, use selected items
+        if value_selection_enabled:
+            selected_items = self.value_list.selectedItems()
+            if selected_items:
+                selected_values = [item.text() for item in selected_items]
+                filtered_data = filtered_data[filtered_data[column_name].astype(str).isin(selected_values)]
+                
+                # Show status message about column filtering
+                status_message = f"Filtered by {column_name}: {len(selected_values)} values selected"
+            else:
+                # No column filter applied (no values selected)
+                status_message = "Warning: No values selected for filtering - no results"
+                QMessageBox.warning(self, "Filter Warning", "No values are selected. Please select at least one value.")
+                return
+        else:
+            # Value selection is not enabled - using all values
+            status_message = f"Using all values for {column_name}"
+        
+        # Apply date filter if enabled
+        if date_filter_enabled and 'DATE' in filtered_data.columns:
+            start_date = self.start_date_edit.date().toString("yyyy-MM-dd")
+            end_date = self.end_date_edit.date().toString("yyyy-MM-dd")
+            
+            # Filter by date range
+            filtered_data = filtered_data[(filtered_data['DATE'] >= start_date) & 
+                                         (filtered_data['DATE'] <= end_date)]
+            
+            # Add date filter info to status message
+            status_message += f", Date range: {start_date} to {end_date}"
+        
+        # If no data after filtering, show message and return
+        if filtered_data.empty:
+            QMessageBox.warning(self, "Filter Results", "No data matches the selected filters.")
             return
         
-        # Apply filter
-        self.raw_data_proxy_model.setFilterKeyColumn(column_index)
-        self.raw_data_proxy_model.setFilterFixedString(filter_text)
+        # Update the model with filtered data
+        headers = filtered_data.columns.tolist()
+        data = [row.tolist() for _, row in filtered_data.iterrows()]
+        
+        # Update the model
+        self.raw_data_model.setData(data, headers)
+        
+        # Display filter status
+        self.statusBar().showMessage(status_message, 5000)
     
     def export_current_analysis(self):
         """Export the current analysis view to a CSV file"""
@@ -2264,6 +2480,92 @@ class MainWindow(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to export: {str(e)}")
                 self.statusBar().showMessage("Error exporting data", 5000)
+    
+    def export_raw_data(self):
+        """Export the currently displayed raw data to a CSV file"""
+        if not hasattr(self, 'raw_data_proxy_model') or not hasattr(self, 'raw_data_model'):
+            QMessageBox.warning(self, "Warning", "No data available to export.")
+            return
+        
+        # Get the filtered data from the current view
+        model = self.raw_data_table.model()
+        if model is None:
+            QMessageBox.warning(self, "Warning", "No data model available.")
+            return
+        
+        # Get the number of rows and columns in the current view
+        row_count = model.rowCount()
+        column_count = model.columnCount()
+        
+        if row_count == 0 or column_count == 0:
+            QMessageBox.warning(self, "Warning", "No data to export.")
+            return
+        
+        # Extract headers and data from the model
+        headers = [model.headerData(j, Qt.Horizontal, Qt.DisplayRole) for j in range(column_count)]
+        
+        # Extract data rows
+        data_rows = []
+        for i in range(row_count):
+            row_data = []
+            for j in range(column_count):
+                index = model.index(i, j)
+                value = model.data(index, Qt.DisplayRole)
+                row_data.append(value)
+            data_rows.append(row_data)
+        
+        # Create a DataFrame from the extracted data
+        import pandas as pd
+        df = pd.DataFrame(data_rows, columns=headers)
+        
+        # Get export directory from config
+        export_dir = self.config_manager.get_export_directory()
+        default_filename = os.path.join(export_dir, "raw_data_export.csv")
+        
+        # Ask for save location
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Export Raw Data", default_filename, "CSV Files (*.csv)"
+        )
+        
+        if filepath:
+            try:
+                # Save the directory for next time
+                self.config_manager.set('General', 'export_directory', str(Path(filepath).parent))
+                
+                # Export the data
+                df.to_csv(filepath, index=False)
+                self.statusBar().showMessage(f"Exported {row_count} rows to {filepath}", 5000)
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to export data: {str(e)}")
+                self.statusBar().showMessage("Error exporting data", 5000)
+    
+    def toggle_value_selection(self, state):
+        """Show or hide the value selection panel based on checkbox state"""
+        # Find the right widget (second widget in the splitter)
+        right_widget = self.raw_data_splitter.widget(1)
+        
+        # State is 2 for checked, 0 for unchecked
+        if state == 2:  # Qt.CheckState.Checked
+            # Show value selection panel
+            right_widget.show()
+            # Reset splitter sizes to give reasonable proportions
+            self.raw_data_splitter.setSizes([700, 300])
+            # Update the value list with current column values
+            self.update_filter_options()
+        else:
+            # Hide value selection panel
+            right_widget.hide()
+            # If hiding, select all values by default
+            self.select_all_values()
+    
+    def select_all_values(self):
+        """Select all items in the value list"""
+        for index in range(self.value_list.count()):
+            self.value_list.item(index).setSelected(True)
+    
+    def deselect_all_values(self):
+        """Deselect all items in the value list"""
+        self.value_list.clearSelection()
 
 def main():
     """Application entry point"""

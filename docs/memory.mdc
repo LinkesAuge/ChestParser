@@ -42,6 +42,10 @@ alwaysApply: false
 - 2024-03-25: Fixed chart view selection for SOURCE and CHEST columns
 - 2024-03-25: Improved button text readability by changing from black to white text
 - 2024-03-25: Enforced required CSV columns (DATE, PLAYER, SOURCE, CHEST, SCORE) and automatic removal of extra columns
+- 2024-03-26: Fixed import and export directory handling to use existing directories at project root
+- 2024-03-27: Enhanced Raw Data Tab with date range filtering, multiple selection filters, and export functionality
+- 2024-03-28: Improved Raw Data Tab UI with split layout, streamlined filtering controls, and select all/deselect all functionality
+- 2024-03-29: Fixed value selection panel not appearing when "Select specific values" checkbox was checked
 
 ## Current Tasks
 - Fixed compatibility issue between matplotlib and PySide6
@@ -128,6 +132,31 @@ alwaysApply: false
   - Updated all CSV loading code paths to enforce these requirements
   - Made the import instructions clearer about column requirements
   - Improved user feedback when columns are missing or removed
+- Fixed import and export directory handling:
+  - Updated ConfigManager to properly detect the project root directory
+  - Modified code to use existing import and export folders at the project root
+  - Added verification to check if directories exist before using them
+  - Added clear logging to show which directories are being used
+  - Ensured application works correctly regardless of starting directory
+- Enhanced Raw Data Tab with advanced filtering and export:
+  - Added date range filter with start and end date pickers
+  - Replaced single-value combobox with multi-select list for column values
+  - Added direct export functionality for filtered data
+  - Improved status bar messages with detailed filter information
+  - Updated filter logic to support both value and date filtering simultaneously
+- Improved Raw Data Tab UI Layout:
+  - Split the tab into two horizontal regions with a QSplitter
+  - Moved the value selection list to the right side of the splitter
+  - Added a checkbox to toggle the value selection panel visibility
+  - Added Select All and Deselect All buttons for the value list
+  - Implemented select all by default behavior for better usability
+  - Made the UI more space-efficient with hide/show functionality for filters
+  - Enhanced the filter process to work with or without specific value selection
+- Fixed value selection panel visibility:
+  - Corrected the toggle_value_selection method to use the proper state value (2 for checked)
+  - Fixed the logic to properly show/hide the value selection panel based on checkbox state
+  - Ensured values are properly populated when panel is shown
+  - Maintained proper sizing and layout of the splitter when showing/hiding panels
 
 ## Dependencies
 - PySide6: 6.8.2.1
@@ -203,3 +232,9 @@ alwaysApply: false
   - When checking if a dictionary is empty, use `if not dict_object` instead of `dict_object.empty`
   - When checking if a DataFrame is empty, use `if df is None or df.empty`
   - Be careful not to mix these patterns as dictionaries don't have an `empty` attribute 
+- UI Splitter considerations:
+  - Use QSplitter to create resizable panes in the UI
+  - Set initial sizes with setSizes([width1, width2]) in pixel values
+  - Can be oriented horizontally (Qt.Horizontal) or vertically (Qt.Vertical)
+  - Use widget.hide() to completely hide a splitter pane
+  - Widget visibility can be toggled dynamically with show/hide methods 

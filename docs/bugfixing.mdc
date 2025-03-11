@@ -849,3 +849,239 @@ Confirmed that the application now correctly:
 1. Rejects CSV files that don't contain all required columns
 2. Removes any additional columns beyond the required ones
 3. Clearly informs users about the column requirements in the UI
+
+### 2024-03-26: Fixed Import and Export Directory Handling
+
+**Issue:**
+The application was creating import and export directories within the src folder instead of using existing directories at the project root.
+
+**Root Cause:**
+The ConfigManager was initialized with a hardcoded approach that always created directories relative to the current working directory, which could vary depending on how the application was started.
+
+**Solution:**
+1. Modified the ConfigManager.__init__ method to intelligently detect the project root and use the existing import/export folders:
+   ```python
+   # Determine if we're in the src directory and need to go up one level
+   if current_dir.name == 'src':
+       self.app_dir = current_dir.parent
+       print(f"Detected running from src directory, using parent as project root: {self.app_dir}")
+   else:
+       self.app_dir = current_dir
+       print(f"Using current directory as project root: {self.app_dir}")
+   ```
+
+2. Added verification to check if the directories exist before using them:
+   ```python
+   # Verify these directories exist and log a message
+   if not self.import_dir.exists():
+       print(f"Warning: Import directory does not exist at {self.import_dir}. Using fallback.")
+       # Fallback to creating a temporary directory if needed
+       self.import_dir = self.app_dir / "import"
+       self.import_dir.mkdir(exist_ok=True)
+   ```
+
+3. Added logging to show which directories are being used:
+   ```python
+   print(f"Using import directory: {self.import_dir}")
+   print(f"Using export directory: {self.export_dir}")
+   ```
+
+**Verification:**
+Confirmed that the application now correctly:
+1. Detects and uses the existing import and export folders at the project root
+2. Works correctly whether started from within the src directory or from the project root
+3. Provides informative logging about which directories are being used
+
+## Enhancements
+
+### 2024-03-27: Enhanced Raw Data Tab with Advanced Filtering and Export
+
+**Enhancement:**
+The Raw Data tab was enhanced with more powerful filtering capabilities and data export functionality to improve data analysis workflow.
+
+**Implementation:**
+1. Added date range filtering:
+   ```python
+   # Start date picker
+   self.start_date_edit = QDateEdit()
+   self.start_date_edit.setCalendarPopup(True)
+   self.start_date_edit.setDisplayFormat("yyyy-MM-dd")
+   self.start_date_edit.setDate(QDate.currentDate().addDays(-30))  # Default to 30 days ago
+   
+   # End date picker
+   self.end_date_edit = QDateEdit()
+   self.end_date_edit.setCalendarPopup(True)
+   self.end_date_edit.setDisplayFormat("yyyy-MM-dd")
+   self.end_date_edit.setDate(QDate.currentDate())  # Default to today
+   ```
+
+2. Replaced single-selection combobox with multi-selection list:
+   ```python
+   # Replace combobox with list widget for multiple selection
+   self.value_list = QListWidget()
+   self.value_list.setSelectionMode(QListWidget.MultiSelection)
+   self.value_list.setMinimumHeight(100)
+   ```
+
+3. Added filtered data export functionality:
+   ```python
+   # Export button
+   self.export_raw_data_button = QPushButton("Export to CSV")
+   self.export_raw_data_button.clicked.connect(self.export_raw_data)
+   ```
+
+4. Implemented improved filtering logic:
+   ```python
+   # Apply column value filter for multiple selections
+   selected_values = [item.text() for item in selected_items]
+   filtered_data = filtered_data[filtered_data[column_name].astype(str).isin(selected_values)]
+   
+   # Apply date filter if enabled
+   if self.date_filter_enabled.isChecked() and 'DATE' in filtered_data.columns:
+       start_date = self.start_date_edit.date().toString("yyyy-MM-dd")
+       end_date = self.end_date_edit.date().toString("yyyy-MM-dd")
+       
+       # Convert dates to strings for comparison
+       filtered_data = filtered_data[(filtered_data['DATE'] >= start_date) & 
+                                    (filtered_data['DATE'] <= end_date)]
+   ```
+
+5. Added detailed status bar messages:
+   ```python
+   # Display filter status
+   filter_status = f"Filtered by {column_name}: {len(selected_values)} values selected"
+   if self.date_filter_enabled.isChecked():
+       filter_status += f", Date range: {start_date} to {end_date}"
+   
+   self.statusBar().showMessage(filter_status, 5000)
+   ```
+
+**Benefits:**
+1. Users can now filter by date ranges for time-series analysis
+2. Multiple category values can be selected simultaneously
+3. Filtered data can be exported directly as CSV
+4. Filter status is clearly shown in the status bar
+5. Improved UI layout with logical grouping of filter controls
+
+**Verification:**
+Confirmed that the application correctly:
+1. Allows selection of multiple values from a column
+2. Properly filters data based on date ranges
+3. Successfully exports the filtered data to CSV
+4. Maintains filter state when switching between tabs
+5. Provides clear feedback on the current filtering status
+
+### 2024-03-28: Improved Raw Data Tab UI Layout
+
+**Enhancement:**
+The Raw Data tab UI was improved to make better use of space and provide more intuitive filtering capabilities while maximizing the area available for viewing data.
+
+**Implementation:**
+1. Split the tab into two horizontal regions using QSplitter:
+   ```python
+   # Create a splitter for left/right division
+   self.raw_data_splitter = QSplitter(Qt.Horizontal)
+   
+   # Set initial sizes (left side gets more space)
+   self.raw_data_splitter.setSizes([700, 300])
+   ```
+
+2. Added a checkbox to toggle value selection visibility:
+   ```python
+   # Checkbox to show/hide specific values selection
+   self.show_value_selection = QCheckBox("Select specific values")
+   self.show_value_selection.setChecked(False)
+   self.show_value_selection.stateChanged.connect(self.toggle_value_selection)
+   ```
+
+3. Implemented Select All/Deselect All functionality:
+   ```python
+   # Select/Deselect All buttons
+   select_buttons_layout = QHBoxLayout()
+   
+   self.select_all_button = QPushButton("Select All")
+   self.select_all_button.clicked.connect(self.select_all_values)
+   
+   self.deselect_all_button = QPushButton("Deselect All")
+   self.deselect_all_button.clicked.connect(self.deselect_all_values)
+   ```
+
+4. Enhanced filter logic to select all values by default:
+   ```python
+   # Update list widget for multiple selection
+   self.value_list.clear()
+   for val in unique_values:
+       item = QListWidgetItem(str(val))
+       self.value_list.addItem(item)
+       # Select all values by default
+       item.setSelected(True)
+   ```
+
+5. Modified filter logic to use all values when selection panel is hidden:
+   ```python
+   # If value selection is enabled, use selected items
+   if value_selection_enabled:
+       selected_items = self.value_list.selectedItems()
+       if selected_items:
+           selected_values = [item.text() for item in selected_items]
+           filtered_data = filtered_data[filtered_data[column_name].astype(str).isin(selected_values)]
+           
+           # Show status message about column filtering
+           status_message = f"Filtered by {column_name}: {len(selected_values)} values selected"
+       else:
+           # No column filter applied (no values selected)
+           status_message = "Warning: No values selected for filtering - no results"
+           QMessageBox.warning(self, "Filter Warning", "No values are selected. Please select at least one value.")
+           return
+   else:
+       # Value selection is not enabled - using all values
+       status_message = f"Using all values for {column_name}"
+   ```
+
+**Benefits:**
+1. More efficient use of screen space with values list hidden by default
+2. Improved usability with select all/deselect all functionality
+3. Simpler filtering workflow with "select specific values" toggle
+4. Movable splitter allows users to adjust the layout to their preference
+5. Better visibility of data table with filter controls minimized by default
+6. Faster workflow with all values selected by default
+7. Clearer user feedback about current filter state
+
+**Verification:**
+Confirmed that the application correctly:
+1. Shows a clean interface with the value selection hidden by default
+2. Allows users to toggle the value selection panel with the checkbox
+3. Properly selects all values by default in the list
+4. Provides working Select All and Deselect All buttons
+5. Accurately filters data whether using all values or specific selections
+6. Maintains a responsive UI with the splitter allowing resizing
+
+### 2024-03-29: Fixed Value Selection Panel Not Showing
+
+**Issue:**
+The value selection panel in the Raw Data tab was not appearing when the "Select specific values" checkbox was checked.
+
+**Root Cause:**
+The toggle_value_selection method was incorrectly checking for the checkbox state using Qt.CheckState.Checked, but the state passed to the method is an integer value (2 for checked, 0 for unchecked) rather than the enumeration value.
+
+**Solution:**
+Modified the toggle_value_selection method to check for the numeric state value:
+
+```python
+# State is 2 for checked, 0 for unchecked
+if state == 2:  # Qt.CheckState.Checked
+    # Show value selection panel
+    right_widget.show()
+    # Reset splitter sizes to give reasonable proportions
+    self.raw_data_splitter.setSizes([700, 300])
+    # Update the value list with current column values
+    self.update_filter_options()
+else:
+    # Hide value selection panel
+    right_widget.hide()
+    # If hiding, select all values by default
+    self.select_all_values()
+```
+
+**Verification:**
+Confirmed that the value selection panel now correctly appears when the "Select specific values" checkbox is checked and disappears when unchecked. The panel correctly shows the list of unique values for the selected column and allows multiple selection as intended.

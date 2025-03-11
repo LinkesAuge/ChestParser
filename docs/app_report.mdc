@@ -96,6 +96,21 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
   - Fixed chart column name case sensitivity issue to allow proper selection of DataFrame columns
   - Fixed chart view selection for SOURCE and CHEST columns to automatically select the correct view
   - Improved button text readability by changing text color from black to white
+  - Enforced required CSV columns and automatic removal of extra columns
+  - Fixed import and export directory handling to use existing folders at project root
+  - Fixed value selection panel not appearing when "Select specific values" checkbox was checked in Raw Data tab
+- Enhanced Raw Data tab with advanced filtering and export features:
+  - Added date range filtering with start and end date pickers
+  - Implemented multi-selection capability for category filters
+  - Added export functionality to save filtered data as CSV
+  - Improved filter status reporting in the status bar
+  - Enhanced UI layout for better organization of filter controls
+  - Implemented split UI with movable divider to maximize table viewing space
+  - Added show/hide functionality for value filters with a space-efficient design
+  - Implemented select all/deselect all capability for filter values
+  - Made all values selected by default for better usability
+  - Added toggle between filtering with all values vs. specific selections
+  - Fixed value selection panel to correctly show/hide based on checkbox state
 - Implemented Total Battle-inspired UI theme:
   - Created a dark blue and gold color scheme matching the game's aesthetic
   - Enhanced button styling with gold gradients
@@ -196,8 +211,11 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
 
 2. **Data Filtering**:
    - Dynamic filter controls based on data columns
-   - Real-time filtering using QSortFilterProxyModel
-   - Multiple filter criteria support
+   - Multiple value selection for each category
+   - Date range filtering for time-based analysis
+   - Real-time filtering with visual feedback
+   - One-click filter clearing
+   - Export of filtered data to CSV files
 
 3. **Data Analysis**:
    - Customizable analysis parameters
