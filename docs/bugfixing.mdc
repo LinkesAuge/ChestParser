@@ -1,0 +1,236 @@
+---
+description: Bug Fixing Log
+globs: *.py
+alwaysApply: false
+---
+# Bug Fixing Log
+
+## Fixed Issues
+
+### 2024-03-12: Matplotlib and PySide6 Compatibility
+
+**Issue:** 
+The application was failing to start with the following error:
+```
+ImportError: Failed to import any of the following Qt binding modules: PyQt5, PySide2
+```
+
+**Root Cause:**
+Matplotlib was attempting to use Qt5 backends (PyQt5 or PySide2) but the application was using PySide6.
+
+**Solution:**
+1. Changed the matplotlib import from `backend_qt5agg` to `backend_qtagg`
+2. Added explicit backend configuration:
+   ```python
+   import matplotlib
+   matplotlib.use('QtAgg')  # Use the generic Qt backend that works with PySide6
+   from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+   ```
+
+**Verification:**
+Successfully ran the application without import errors.
+
+### 2024-03-12: CSV Encoding Issue
+
+**Issue:**
+When importing a CSV file, the following error occurred:
+```
+Failed to load CSV file: Error loading CSV file: 'utf-8'codec can't decode byte 0xfc in position 395: invalid start byte
+```
+
+**Root Cause:**
+The application was trying to read the CSV file using UTF-8 encoding, but the file contained characters (like 'ü', byte 0xfc) that were encoded using a different encoding format, likely Windows-1252 or Latin-1.
+
+**Solution:**
+Modified the `DataProcessor.load_csv()` method to try multiple encodings:
+```python
+@staticmethod
+def load_csv(filepath):
+    """
+    Load CSV data from file and return as pandas DataFrame.
+    
+    Attempts different encodings if the default UTF-8 fails.
+    """
+    encodings_to_try = ['utf-8', 'latin1', 'iso-8859-1', 'cp1252', 'windows-1252']
+    
+    for encoding in encodings_to_try:
+        try:
+            df = pd.read_csv(filepath, encoding=encoding)
+            # Remove CLAN column as per requirements
+            if 'CLAN' in df.columns:
+                df = df.drop(columns=['CLAN'])
+            return df
+        except UnicodeDecodeError:
+            # Try the next encoding
+            continue
+        except Exception as e:
+            # For other exceptions, raise immediately
+            raise ValueError(f"Error loading CSV file: {str(e)}")
+            
+    # If we've tried all encodings and none worked
+    raise ValueError("Could not decode the CSV file with any supported encoding. Please check the file format.")
+```
+
+**Verification:**
+This change should allow the application to properly import CSV files with various encodings commonly used for European languages.
+
+### 2024-03-12: Pandas DataFrame Boolean Evaluation
+
+**Issue:**
+After fixing the CSV encoding, the application showed this error when trying to load a file:
+```
+ValueError: The truth value of a DataFrame is ambiguous. Use a.empty, a.bool(), a.item(), a.any() or a.all().
+```
+
+**Root Cause:**
+In the `update_filter_options` and `filter_raw_data` methods, the code was directly checking if the DataFrame was falsy with `if not self.raw_data`, but pandas DataFrames can't be evaluated as booleans this way.
+
+**Solution:**
+Modified both methods to properly check for None or empty DataFrames:
+```python
+def update_filter_options(self):
+    """Update filter options based on selected column"""
+    if self.raw_data is None or self.raw_data.empty or self.column_selector.currentText() == "":
+        return
+    
+    # Rest of the method...
+
+def filter_raw_data(self):
+    """Filter raw data based on selected criteria"""
+    if self.raw_data is None or self.raw_data.empty or self.column_selector.currentText() == "":
+        return
+    
+    # Rest of the method...
+```
+
+**Verification:**
+This fix prevents pandas from trying to evaluate the DataFrame as a boolean value.
+
+### 2024-03-12: QSortFilterProxyModel API Update
+
+**Issue:**
+The application threw an error related to filter methods:
+```
+self.raw_data_proxy_model.setFilterRegExp("")
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ou mean: 'setFilterRole'?
+```
+
+**Root Cause:**
+The application was using `setFilterRegExp()` which is no longer available or has been deprecated in the version of PySide6 being used (6.8.2.1).
+
+**Solution:**
+Updated the filtering code to use the current API:
+```python
+# Changed from
+self.raw_data_proxy_model.setFilterRegExp("")
+# To
+self.raw_data_proxy_model.setFilterFixedString("")
+```
+
+**Verification:**
+This should properly clear the filter using the current PySide6 API methods.
+
+### 2024-03-12: Drag and Drop Functionality - Comprehensive Fix
+
+**Issue:** 
+Despite previous improvements, the drag and drop functionality was still not accepting files, showing a red crossed circle when trying to drop CSV files.
+
+**Root Cause:**
+Multiple issues in the application architecture:
+1. The MainWindow wasn't explicitly calling setAcceptDrops(True) in the constructor
+2. The event propagation between MainWindow and DropArea was inconsistent
+3. The file extension checking logic needed enhancement
+4. The UI components weren't being properly initialized, causing potential event handling issues
+5. The way dropped files were being processed needed improvement
+
+**Solution:**
+1. Comprehensive refactoring of the application's UI structure:
+   ```python
+   # Enable drop acceptance in MainWindow constructor
+   def __init__(self):
+       super().__init__()
+       self.setAcceptDrops(True)
+       # ...
+   ```
+
+2. Enhanced drag and drop event handlers with improved debugging:
+   ```python
+   def dragEnterEvent(self, event):
+       print(f"DropArea: dragEnterEvent - mimeData formats: {event.mimeData().formats()}")
+       
+       if event.mimeData().hasUrls():
+           urls = event.mimeData().urls()
+           print(f"DropArea: dragEnterEvent - URLs: {[url.toString() for url in urls]}")
+           
+           # Check if any of the URLs are CSV files
+           has_csv = False
+           for url in urls:
+               filepath = url.toLocalFile()
+               print(f"DropArea: dragEnterEvent - Checking file: {filepath}")
+               if filepath.lower().endswith('.csv'):
+                   has_csv = True
+                   break
+                   
+           if has_csv:
+               print("DropArea: dragEnterEvent - Found CSV file, accepting")
+               event.acceptProposedAction()
+               # Visual feedback added here
+           else:
+               event.ignore()
+   ```
+
+3. Improved dropEvent handling to properly process files:
+   ```python
+   def dropEvent(self, event):
+       print(f"MainWindow: dropEvent - mimeData formats: {event.mimeData().formats()}")
+       
+       if self.tabs.currentIndex() == 0:
+           if event.mimeData().hasUrls():
+               for url in event.mimeData().urls():
+                   filepath = url.toLocalFile()
+                   
+                   if filepath.lower().endswith('.csv'):
+                       print(f"MainWindow: dropEvent - Found CSV file: {filepath}")
+                       event.acceptProposedAction()
+                       
+                       # Load the CSV file
+                       self.load_csv_file(filepath)
+                       return
+   ```
+
+4. Completely rebuilt the UI components with proper initialization:
+   - Separated tab creation from setup methods
+   - Fixed UI control connections
+   - Added proper error handling in load_csv_file
+   - Added visual feedback during drag operations
+
+5. Enhanced CSV file loading with better error handling:
+   ```python
+   def load_csv_file(self, filepath):
+       """Load CSV file and display data"""
+       print(f"Loading CSV file: {filepath}")
+       self.statusBar().showMessage(f"Loading {filepath}...", 2000)
+       
+       try:
+           # Load CSV data
+           self.raw_data = DataProcessor.load_csv(filepath)
+           
+           if self.raw_data is None or self.raw_data.empty:
+               QMessageBox.warning(self, "Warning", "The loaded CSV file contains no data.")
+               return
+           
+           # ...rest of the method
+   ```
+
+**Verification:**
+These comprehensive changes ensure:
+1. The application properly accepts drag and drop of CSV files
+2. Visual feedback is provided during drag operations
+3. File extension checking is robust
+4. Error handling is comprehensive
+5. UI components initialize and update correctly
+
+## Ongoing Issues
+
+None currently identified. 

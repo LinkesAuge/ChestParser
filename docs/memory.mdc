@@ -1,0 +1,80 @@
+---
+description: Project Memory
+globs: *.py
+alwaysApply: false
+---
+# Project Memory
+
+## Current Context
+- Total Battle analyzer application using PySide6 and matplotlib
+- The application analyzes and visualizes data from Total Battle game
+- Main file: src/total-battle-analyzer.py
+
+## Development History
+- 2024-03-11: Initial project setup with PySide6, matplotlib, and pandas
+- 2024-03-12: Fixed compatibility issue between matplotlib and PySide6
+- 2024-03-12: Enhanced CSV loading to support multiple encodings
+- 2024-03-12: Fixed pandas DataFrame boolean evaluation issue
+- 2024-03-12: Updated QSortFilterProxyModel filtering API usage
+- 2024-03-12: Fixed drag and drop functionality for CSV files (red crossed circle issue)
+- 2024-03-12: Enhanced drag and drop with file extension filtering and visual feedback
+- 2024-03-12: Comprehensive UI refactoring and drag-and-drop implementation
+
+## Current Tasks
+- Fixed compatibility issue between matplotlib and PySide6
+  - Changed import from backend_qt5agg to backend_qtagg
+  - Added explicit matplotlib backend configuration to use QtAgg
+- Enhanced CSV loading to handle non-UTF-8 encodings
+  - Modified DataProcessor.load_csv() to try multiple encodings
+  - Added better error handling for encoding issues
+- Fixed pandas DataFrame boolean evaluation issue
+  - Changed `if not self.raw_data` to `if self.raw_data is None or self.raw_data.empty`
+  - Updated both filter_raw_data and update_filter_options methods
+- Updated PySide6 filtering API usage
+  - Changed deprecated `setFilterRegExp("")` to `setFilterFixedString("")`
+- Fixed drag and drop functionality (red crossed circle issue)
+  - Used event.acceptProposedAction() instead of event.accept()
+  - Implemented proper drag and drop in both DropArea and MainWindow
+  - Added comprehensive event handling for all drag and drop events
+  - Improved debug printing for troubleshooting
+- Enhanced drag and drop functionality for better user experience
+  - Added file extension checking before accepting drags
+  - Added visual feedback during valid drag operations 
+  - Improved MainWindow handling of drop events
+  - Ensured consistent event handling across all drag and drop events
+- Comprehensive UI refactoring
+  - Restructured tab creation and initialization
+  - Improved UI component layout and organization
+  - Separated UI creation from data handling
+  - Added proper error handling for all data operations
+  - Enhanced CSV file loading with detailed error checking
+  - Added comprehensive debugging for drag and drop operations
+  - Fixed interactions between MainWindow and DropArea components
+  - Improved visual feedback throughout the application
+
+## Dependencies
+- PySide6: 6.8.2.1
+- matplotlib: 3.10.1
+- pandas: 2.2.3
+- pathlib: 1.0.1
+- datetime: 5.5+
+
+## Notes
+- The application uses a dark theme for the UI
+- Has multiple tabs: Import, Raw Data, Analysis, and Charts
+- CSV files may contain special characters requiring different encodings (like Windows-1252 or Latin-1)
+- Proper pandas DataFrame handling requires checking `is None` or `.empty` rather than direct boolean evaluation
+- PySide6 6.8.2.1 uses updated filtering API methods compared to older versions
+- Drag and drop in Qt applications requires proper implementation of dragEnterEvent, dragMoveEvent, and dropEvent
+- For drag and drop to work with files in Qt:
+  - Use event.acceptProposedAction() to properly accept drops
+  - Implement all necessary drag events (Enter, Move, Leave, Drop)
+  - Process the mimeData to extract file information
+  - Check file extensions before accepting drag operations
+  - Provide visual feedback to the user when files can be dropped
+- To debug drag and drop issues:
+  - Print mime data formats with event.mimeData().formats()
+  - Add detailed logging for each event type
+  - Explicitly handle URLs from mime data with url.toLocalFile()
+  - Ensure the MainWindow has setAcceptDrops(True) set
+  - Make sure to override all drag and drop related events 

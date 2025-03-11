@@ -1,0 +1,99 @@
+---
+description: Total Battle Analyzer - Application Report
+globs: *.py
+alwaysApply: false
+---
+# Total Battle Analyzer - Application Report
+
+## Overview
+The Total Battle Analyzer is a desktop application built with PySide6 that allows users to import, view, analyze, and visualize data from the Total Battle game. It provides a user-friendly GUI with multiple tabs for different functionality.
+
+## Core Components
+
+### User Interface
+- **Main Window**: QMainWindow-based interface with multiple tabs
+- **Tabs**:
+  - Import: Drag & drop interface for CSV file importing
+  - Raw Data: Table view of imported data with filtering
+  - Analysis: Statistical analysis of the data
+  - Charts: Visualization of data using matplotlib
+
+### Data Processing
+- **DataProcessor**: Handles loading and analyzing CSV data
+  - Supports multiple file encodings (UTF-8, Latin-1, Windows-1252)
+  - Processes and transforms data for analysis
+- **CustomTableModel**: Custom model for displaying tabular data
+
+### Visualization
+- **MplCanvas**: Matplotlib integration for creating charts and graphs
+  - Supports bar charts, pie charts, and line charts
+  - Dynamically generates visualizations based on data selection
+
+### User Experience
+- **DropArea**: Custom widget for handling file drops
+  - Supports drag & drop import of CSV files with visual feedback
+  - Validates file extensions during drag operations
+  - Changes border color to provide visual cues during drag
+  - Provides fallback file selection dialog
+- **StyleManager**: Manages application styling and theming
+  - Provides consistent dark theme across the application
+  - Enhances readability and visual appeal
+
+## File Structure
+- `src/total-battle-analyzer.py`: Main application file
+- `pyproject.toml`: Project dependencies and configuration
+- `docs/`: Documentation and development history
+
+## Dependencies
+- PySide6: 6.8.2.1 (Qt-based GUI framework)
+- matplotlib: 3.10.1 (Visualization library) 
+- pandas: 2.2.3 (Data analysis library)
+- Python standard libraries: pathlib, datetime, csv, etc.
+
+## Recent Changes
+- Fixed compatibility issue between matplotlib and PySide6:
+  - Configured matplotlib to use the QtAgg backend
+  - Updated imports to use compatible modules
+- Enhanced CSV file importing with support for multiple encodings:
+  - Added automatic detection for UTF-8, Latin-1, ISO-8859-1, and Windows-1252
+  - Improved error handling for encoding issues
+- Fixed data handling issues:
+  - Corrected pandas DataFrame boolean evaluation
+  - Updated QSortFilterProxyModel API usage for compatibility with PySide6 6.8.2.1
+- Improved drag and drop functionality:
+  - Completely refactored the drag and drop implementation
+  - Added proper MIME data handling and debugging
+  - Added support for mixed file selections (filtering for CSV files)
+  - Fixed case sensitivity issues with file extension checking
+  - Added visual feedback during drag operations
+  - Improved MainWindow handling of drop events
+- Comprehensive UI refactoring:
+  - Restructured tab creation and widget initialization
+  - Improved error handling for data loading
+  - Enhanced visualization options with multiple chart types
+  - Added detailed progress and status reporting
+  - Improved filtering in the Raw Data tab
+
+## Application Flow
+1. User launches the application
+2. User imports data via drag & drop or file selection in the Import tab
+3. The application processes the data and displays it in the Raw Data tab
+4. User can apply filters to view specific subsets of data
+5. The Analysis tab provides statistical insights with various analysis views
+6. The Charts tab offers customizable visualizations of the data
+7. Results can be exported as CSV files for further analysis
+
+## Technical Notes
+- The application uses a dark theme for better visibility
+- Custom table models are used for efficient data display
+- Data filtering is implemented with QSortFilterProxyModel
+- Matplotlib is integrated with PySide6 for charts
+- CSV files with special characters (like umlauts) are supported through multiple encoding options
+- Proper pandas DataFrame handling is implemented with null/empty checks
+- PySide6 API changes are addressed for compatibility
+- Drag and drop implementation follows Qt event handling best practices:
+  - Proper filtering of file types before accepting drags
+  - Visual feedback during valid drag operations
+  - Comprehensive event debugging and logging
+  - Explicit handling of MIME data and URL processing
+  - Consistent event propagation between components 

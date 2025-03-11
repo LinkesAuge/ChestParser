@@ -1,0 +1,36 @@
+---
+description: This file contains guidelines for the Total Battle analyzer project to ensure consistency and quality in development.
+globs: *.py
+alwaysApply: false
+---
+# App  Project Guidelines
+
+This file contains guidelines for the Total Battle analyzer project to ensure consistency and quality in development.
+
+## Project Structure
+- `/src`: Contains the main application code
+- `/docs`: Documentation and project memory
+- `/.venv`: Python virtual environment
+
+## Development Rules
+1. Always maintain compatibility between dependencies
+2. Document any changes to dependencies in the memory file
+3. Keep the UI consistent with the application design
+4. Add detailed comments for all functionality
+5. Update the TB_Scout_Application_Report.md with any significant changes
+
+## Naming Conventions
+- Use camelCase for variables and functions
+- Use PascalCase for classes
+- Use UPPER_SNAKE_CASE for constants
+
+## Code Style
+- Follow PEP 8 guidelines for Python code
+- Maintain proper indentation
+- Keep functions focused on single responsibilities
+- Add type hints to function definitions
+
+## Documentation
+- Document all classes and methods
+- Update memory.mdc with ongoing tasks and issues
+- Keep bugfixing.mdc updated with any bug fixes or issues 
