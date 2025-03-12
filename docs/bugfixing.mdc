@@ -1876,3 +1876,127 @@ df = df[required_plus_extras]
 1. Both German names with umlauts ("Feldjäger" and "Krümelmonster") now display correctly in the application
 2. The enhanced encoding detection correctly identifies and handles various character encodings
 3. Additional columns like "CLAN" are now preserved in the loaded data
+
+### 2024-06-08: Analysis Tab Displaying Raw Data
+
+### Bug Description
+The Analysis tab was displaying raw data instead of properly processed analysis results. This made the tab unusable for its intended purpose of showing statistical analysis like player totals, chest totals, etc.
+
+### Investigation
+1. Initial analysis revealed that the Analysis tab appeared to be using a display method that was showing raw data instead of calling the DataProcessor's analysis methods.
+2. Found a duplicate `update_analysis_view` method in the MainWindow class (around line 1441) that was simply displaying raw data.
+3. The duplicate method was overriding the correct implementation higher up in the file that properly used the DataProcessor.analyze_data() output.
+4. Created test scripts to verify that DataProcessor.analyze_data() functions correctly.
+5. Added debug logging to the correct update_analysis_view method to trace data flow.
+
+### Fix
+1. Removed the duplicate `update_analysis_view` method that was displaying raw data instead of analyzed data.
+2. Added comprehensive debug logging to the correct method to trace the data flow.
+3. Verified that the fix worked by running the application and observing the Analysis tab now displaying processed data.
+4. Created a test script (test_analysis_tab.py) to verify the analysis functionality.
+5. Updated documentation in app_report.mdc and memory.mdc.
+
+### Result
+The Analysis tab now correctly displays processed analysis data including player totals, chest totals, source totals, and the default "Player Overview" that shows comprehensive statistics for each player.
+
+### Files Modified
+- src/modules/mainwindow.py - Removed duplicate method, added debug logging
+- src/test_analysis_tab.py - Created for testing
+- docs/app_report.mdc - Updated with fix information
+- docs/memory.mdc - Updated with task completion status
+- docs/bugfixing.mdc - Added this entry
+
+### 2024-06-11: GUI Layout Issues
+
+**Issue 1:** 
+The filter/view options elements in the Raw Data and Analysis tabs didn't use the full vertical space available, leading to a suboptimal user experience when selecting values from the dropdown list.
+
+**Root Cause:**
+The `QListWidget` and container elements didn't have proper stretch factors or size policies that would allow them to expand vertically and use all available space.
+
+**Solution:**
+1. Added proper QSizePolicy settings to the value selection lists:
+   ```python
+   self.value_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+   ```
+
+2. Added stretch factors to widget layouts to prioritize functional elements:
+   ```python
+   value_list_layout.addWidget(self.value_list, 1)  # Set stretch factor to 1 to use all available space
+   filter_layout.addWidget(self.value_list_widget, 1)  # Set stretch factor to 1 to use all available space
+   left_layout.addWidget(filter_group, 1)  # Set stretch factor to 1 to use all available space
+   left_layout.addStretch(0)  # Reduce the stretch factor to 0
+   ```
+
+3. Applied the same changes to both the Raw Data and Analysis tabs for consistency.
+
+**Verification:**
+The filter selection area now properly expands to fill the available vertical space, making it much easier to select values from longer lists without excessive scrolling.
+
+**Issue 2:**
+The Charts tab had an unused empty section (placeholder), and instead used a smaller area below it to display charts.
+
+**Root Cause:**
+The chart tab was using a placeholder widget that wasn't being properly utilized, and the actual chart was being dynamically added but not with optimal space allocation.
+
+**Solution:**
+1. Completely redesigned the Charts tab layout:
+   ```python
+   # Create a matplotlib figure
+   self.chart_figure = Figure(figsize=(10, 6), dpi=100)
+   self.chart_canvas = FigureCanvas(self.chart_figure)
+   
+   # Set up the canvas to use most of the space
+   self.chart_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+   layout.addWidget(self.chart_canvas, 1)  # Add with stretch factor 1 to use available space
+   ```
+
+2. Removed the unused placeholder widget and the dynamic widget insertion approach.
+
+3. Added a comprehensive chart customization panel with various options:
+   - Data column selection (SCORE, CHEST_COUNT, TOTAL_SCORE)
+   - Sorting options by column and direction
+   - Results limiting with top N filtering
+   - Display options for value labels and grid lines
+   - Chart saving functionality
+
+4. Updated the `update_chart` method to handle all the new customization options.
+
+**Verification:**
+The chart now uses the full available area in the Charts tab, and users have access to extensive customization options that were previously available in earlier versions of the application. The chart display is now more consistent and visually appealing.
+
+### 2024-06-13: Filter Panel Layout Change
+
+**Issue:** 
+When deselecting the "Select specific values" checkbox in either the Raw Data or Analysis tabs, the layout of the filter box would change, causing a jarring visual effect.
+
+**Root Cause:**
+The toggle_value_selection and toggle_analysis_value_selection methods were completely hiding the value selection panels when the checkbox was unchecked, which caused the parent layout to recalculate and resize elements.
+
+**Solution:**
+1. Modified both toggle methods to keep the value selection panels always visible but manage their content and state:
+   ```python
+   # Always keep the widget visible to maintain layout, but manage content
+   self.value_list_widget.setVisible(True)
+   
+   # Clear the list if checkbox is unchecked
+   if not is_checked:
+       self.value_list.clear()
+       # Disable the list and buttons when unchecked
+       self.value_list.setEnabled(False)
+       self.select_all_button.setEnabled(False)
+       self.deselect_all_button.setEnabled(False)
+   else:
+       # Enable the list and buttons when checked
+       self.value_list.setEnabled(True)
+       self.select_all_button.setEnabled(True)
+       self.deselect_all_button.setEnabled(True)
+       # Update the options if we have data
+       if self.raw_data is not None:
+           self.update_filter_options()
+   ```
+
+2. Applied the same changes to both the Raw Data and Analysis tabs for consistency.
+
+**Verification:**
+The filter selection area now maintains a consistent layout regardless of the checkbox state. When unchecked, the value selection list is cleared and disabled but still visible, preserving the panel dimensions and overall layout stability.

@@ -128,27 +128,27 @@ alwaysApply: false
 - 2024-06-03: Fixed remaining linter errors in Report tab implementation (TABLEAU_COLORS definition)
 - 2024-06-03: Addressed multiple indentation issues throughout the codebase
 - 2024-06-03: Created fix scripts for specific indentation problems
+- 2024-06-11: Optimized filter areas in Raw Data and Analysis tabs to use full vertical space
+- 2024-06-11: Removed unused placeholder in Charts tab and used full area for charts
+- 2024-06-11: Added extensive chart customization options including data column selection, sorting, and limiting
+- 2024-06-11: Added display options toggle for value labels and grid lines
+- 2024-06-11: Implemented chart saving functionality supporting multiple formats (PNG, JPG, PDF, SVG)
+- 2024-06-11: Enhanced chart value display with better positioning and bold text for improved readability
+- 2024-06-13: Fixed layout change issue when toggling "Select specific values" checkbox in filter panels
 
 ## Current Tasks
-- Enhanced application theme:
-  - Removed light theme completely to maintain consistent dark theme
-  - Updated dark theme colors:
-    - Main background: #1A2742
-    - Secondary background: #2A3752
-    - Text: #FFFFFF (primary), #8899AA (secondary)
-    - Accent: #D4AF37 (gold)
-    - Hover: #F0C75A (light gold)
-  - Updated chart styling to match application theme:
-    - Chart background: #1A2742
-    - Grid color: #3A4762
-    - Text color: #FFFFFF
-    - Title color: #D4AF37
-    - Chart colors: Gold (#D4AF37), Blue (#5991C4), Green (#6EC1A7), Red (#D46A5F)
-  - Removed theme selection from settings
-  - Updated ConfigManager to always use dark theme
-  - Ensured consistent styling across all UI components
-  - Enhanced chart readability with proper contrast
-  - Improved visual hierarchy with gold accents
+- UI Layout Improvements:
+  - Fixed issue in the Raw Data and Analysis tabs where filter/view options didn't use full vertical space
+  - Fixed issue in the Charts tab where an empty section was displayed instead of using the full space for charts
+  - Fixed issue where deselecting "Select specific values" checkbox would change the layout of the filter box
+  - Added comprehensive chart customization options including:
+    - Data column selection (SCORE, CHEST_COUNT, TOTAL_SCORE)
+    - Sorting options by column and direction
+    - Results limiting with top N control
+    - Display options for value labels and grid lines
+    - Chart saving functionality with multiple format support
+  - Implemented proper widget size policies for better space utilization
+  - Used stretch factors to optimize vertical space in layouts
 
 ## Dependencies
 - PySide6: 6.8.2.1
@@ -171,6 +171,8 @@ alwaysApply: false
 - The new Report tab provides comprehensive analysis with HTML/PDF export capabilities
 - Chart functionality now includes 3D visualizations with bubble charts showing efficiency metrics
 - Efficiency calculations (points per chest) provide additional insights into player performance
+- Filter areas now use full vertical space for better usability when selecting values
+- Charts tab has enhanced customization options and better space utilization
 
 ## 2024-06-01: Added Report Tab
 - Implemented a new Report tab with comprehensive reporting capabilities
@@ -197,57 +199,46 @@ alwaysApply: false
 - Added proper error handling and data validation
 - Fixed visibility toggle for analysis value selection panel
 
-## Current Task
-- Fixed Raw Data tab filter interface to match the Analysis tab:
-  - Replaced the FilterArea component with a direct implementation matching the Analysis tab
-  - Ensured both tabs use the same filter UI structure and pattern
-  - Made select specific values work correctly in the Raw Data tab
-  - Fixed column population and value list selection in both tabs
-  - Removed dependency on the FilterArea component
-  - Enhanced the toggle_value_selection methods to handle different state parameter types
+## 2024-06-05: Fixed Raw Data Tab Filter Interface
+- Replaced the FilterArea component with a direct implementation matching the Analysis tab
+- Ensured both tabs use the same filter UI structure and pattern
+- Made select specific values work correctly in the Raw Data tab
+- Fixed column population and value list selection in both tabs
+- Removed dependency on the FilterArea component
+- Enhanced the toggle_value_selection methods to handle different state parameter types
 
-## Progress (2024-06-05)
-- Identified issues with the Raw Data tab filter interface:
-  - The Raw Data tab was using a different UI structure (FilterArea component) than the Analysis tab
-  - The FilterArea component wasn't consistent with the Analysis tab implementation
-  - The "Select specific values" functionality wasn't working correctly in the Raw Data tab
+## 2024-06-11: Improved GUI Layout and Chart Customization
+- Optimized filter selection areas in both Raw Data and Analysis tabs:
+  - Made value selection lists expand to use all available vertical space
+  - Applied proper stretch factors to QListWidget and parent containers
+  - Reduced spacer stretch to prioritize functional elements
+  - Used QSizePolicy to ensure proper widget expansion
   
-- Implemented a comprehensive solution:
-  1. Redesigned the Raw Data tab to use the same UI structure as the Analysis tab
-     - Replaced FilterArea with direct implementation in the MainWindow class
-     - Created consistent filter controls group with the same layout and functionality
-     - Used the same pattern for the value selection panel
-     
-  2. Implemented consistent update methods for both tabs
-     - Used the same pattern for update_filter_options and toggle_value_selection
-     - Ensured both tabs use raw_data for populating filter options
-     - Added select all values by default for better usability
-     
-  3. Enhanced load_csv_file to properly initialize both tabs
-     - Added proper column population for both tabs
-     - Added filter options update based on the first column
-     - Updated visibility of filter panels based on checkbox state
-     
-  4. Removed FilterArea dependency
-     - Removed connection to filter_area signals in __init__
-     - Updated all methods to use direct implementation instead
-     
-  5. Fixed init_tab_states to properly initialize both tabs
-     - Added proper visibility handling for both tabs' value selection panels
-     - Ensured UI state is consistent with checkbox state
-  
-- Tested the changes and verified:
-  - Both tabs now show the same filter options
-  - "Select specific values" checkbox correctly shows/hides the value selection panel
-  - Value selection panels are populated with the correct unique values
-  - All filter functionality works correctly in both tabs
-  - The UI layout and behavior is now consistent
+- Completely redesigned the Charts tab:
+  - Removed the unused placeholder widget
+  - Added comprehensive chart controls grouped in a "Chart Customization" panel
+  - Implemented data column selection for different metrics
+  - Added sorting controls by column and direction
+  - Added result limiting with "top N" filtering
+  - Added display options for value labels and grid lines
+  - Implemented direct chart display without the need for dynamic widget insertion
+  - Added chart saving functionality with multiple format support
+
+- Enhanced chart visualization:
+  - Updated the update_chart method to handle all new customization options
+  - Improved chart styling with better spacing and formatting
+  - Added bold text for value labels
+  - Implemented proper positioning for data point labels
+  - Added wedge properties for better pie chart appearance
+  - Ensured consistent styling across all chart types
+  - Made value display optional and controlled by user preference
 
 ## Next Steps
-- Test the application with different CSV files to ensure consistent behavior
-- Consider adding more comprehensive error handling for filter operations
-- Look for other UI inconsistencies between tabs that could be improved
-- Consider implementing a unified filter component that could be reused across tabs
+- Test the application with different CSV files to ensure consistent behavior with new chart customization options
+- Consider adding more chart types (scatter plots, histograms, etc.)
+- Look for other UI layout improvements that could enhance user experience
+- Consider adding chart presets for common visualization scenarios
+- Explore options for advanced chart interactions (tooltips, zoom, etc.)
 
 ## Application Structure
 - The application uses a tab-based interface with Import, Raw Data, Analysis, Charts, and Report tabs
@@ -297,4 +288,52 @@ alwaysApply: false
 - PDF export requires the QPrinter module from PySide6.QtPrintSupport
 - Chart generation uses matplotlib to create temporary image files
 - HTML reports use a dark theme matching the application's UI
+
+## Current Task Status
+- Fixed the Analysis tab to display processed data instead of raw data 
+- Identified and removed a duplicate `update_analysis_view` method that was overriding the correct implementation
+- Added detailed debug logging to the `update_analysis_view` method to trace data flow
+- Verified the fix works correctly through testing
+- Confirmed that the app now correctly shows analyzed data in the Analysis tab
+- Updated the app_report.mdc file with information about the fixes
+
+## File Structure
+- src/
+  - modules/
+    - mainwindow.py - Contains the MainWindow class and UI logic
+    - dataprocessor.py - Contains the DataProcessor class for data processing and analysis
+    - models.py - Contains custom models for tables and data
+    - ui/ - UI-related components
+    - style/ - Styling and theme components
+  - utils/
+    - configuration.py - Configuration management
+    - helpers.py - Helper functions
+  - total-battle-analyzer.py - Main application entry point
+- data/ - Contains sample data files
+- docs/ - Documentation
+  - app_report.mdc - Comprehensive report about the application
+  - memory.mdc - This file
+  - bugfixing.mdc - Bug tracking and fixes
+- tests/ - Test scripts and data
+
+## Previous Tasks
+- Created test scripts to verify analysis functionality
+- Added debug logging to help diagnose and fix issues
+- Researched how the DataProcessor.analyze_data method works
+- Implemented various test scripts to trace data flow
+
+## Important Components
+- MainWindow - Main application window with UI setup and event handling
+- DataProcessor - Handles loading, processing, and analyzing data
+- CustomTableModel - Custom model for displaying tabular data
+- MplCanvas - Matplotlib integration for chart creation
+
+## Known Issues
+- ✅ Analysis tab showing raw data instead of processed analysis (FIXED)
+
+## Notes
+- The application follows a structure where the MainWindow contains UI logic and delegates data processing to DataProcessor
+- The DataProcessor.analyze_data method returns a dictionary of DataFrames with various analysis types
+- The duplicate method was causing the app to display raw data instead of processed data
+- Debug logging was added to trace the data flow in the update_analysis_view method
  

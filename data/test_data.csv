@@ -1,0 +1,11 @@
+DATE,PLAYER,SOURCE,CHEST,SCORE
+2024-03-01,Player1,Alliance,Gold,100
+2024-03-01,Player1,Alliance,Silver,50
+2024-03-02,Player1,Event,Gold,150
+2024-03-03,Player2,Alliance,Gold,120
+2024-03-04,Player2,Event,Diamond,200
+2024-03-05,Player3,Raid,Gold,80
+2024-03-05,Player3,Raid,Silver,40
+2024-03-06,Player1,Campaign,Diamond,180
+2024-03-07,Player2,Campaign,Gold,90
+2024-03-08,Player3,Event,Diamond,220 

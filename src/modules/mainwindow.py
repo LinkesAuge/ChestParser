@@ -22,6 +22,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 
 # Qt imports
 from PySide6.QtWidgets import (
@@ -29,7 +30,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QTableView, QTabWidget, QSplitter, QFrame,
     QComboBox, QLineEdit, QGroupBox, QCheckBox, QListWidget, QHeaderView,
     QAbstractItemView, QDateEdit, QTextBrowser, QApplication,
-    QListWidgetItem, QStatusBar, QGridLayout
+    QListWidgetItem, QStatusBar, QGridLayout, QSizePolicy, QSpinBox
 )
 from PySide6.QtCore import Qt, QTimer, QDate, QSettings, QDir, Signal, QSortFilterProxyModel
 from PySide6.QtGui import QIcon, QColor
@@ -291,9 +292,6 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'analysis_show_value_selection') and hasattr(self, 'analysis_value_panel'):
                 self.toggle_analysis_value_selection()
             
-            # Update chart
-            self.update_chart()
-            
             # Update file label
             self.file_label.setText(f"Loaded: {os.path.basename(file_path)}")
             
@@ -378,27 +376,280 @@ class MainWindow(QMainWindow):
         
         # Update analysis view
         self.update_analysis_view()
+        
+        # Update chart to reflect the filtered data
+        self.update_chart()
 
     def reset_analysis_filter(self):
-        """Reset the analysis filter and show all data."""
+        """Reset all analysis filters to their default state."""
         if self.raw_data is None:
             return
         
         # Reset analysis data to raw data
         self.analysis_data = self.raw_data.copy()
+            
+        # Reset date filter to last 30 days
+        if hasattr(self, 'analysis_start_date_edit') and hasattr(self, 'analysis_end_date_edit'):
+            today = QDate.currentDate()
+            thirty_days_ago = today.addDays(-30)
+            self.analysis_start_date_edit.setDate(thirty_days_ago)
+            self.analysis_end_date_edit.setDate(today)
+            
+            # Uncheck date filter if it's checked
+            if hasattr(self, 'analysis_date_filter_enabled') and self.analysis_date_filter_enabled.isChecked():
+                self.analysis_date_filter_enabled.setChecked(False)
         
-        # Select all values in the analysis value list
-        self.select_all_analysis_values()
+        # If value selection is visible, select all values
+        if hasattr(self, 'analysis_show_value_selection') and self.analysis_show_value_selection.isChecked():
+            self.select_all_analysis_values()
         
-        # Update analysis view
+        # Update the view with unfiltered data
         self.update_analysis_view()
         
-        self.statusBar().showMessage("Analysis filter reset")
+        # Update chart to reflect the reset data
+        self.update_chart()
+        
+        # Update status
+        self.statusBar().showMessage("Analysis filters reset")
 
     def update_chart(self):
-        """Update the chart based on the selected chart type."""
+        """Update the chart based on the selected chart type and options."""
         if self.debug:
-            print(f"Updated chart: {self.analysis_chart_selector.currentText() if hasattr(self, 'analysis_chart_selector') else 'No chart selector'}")
+            print(f"Update chart called")
+        
+        # Check if we have a chart selector and canvas
+        if not hasattr(self, 'analysis_chart_selector') or not hasattr(self, 'chart_canvas'):
+            if self.debug:
+                print("Chart selector or canvas not found")
+            return
+            
+        # Check if we have analysis results
+        if not hasattr(self, 'analysis_results') or self.analysis_results is None:
+            if self.debug:
+                print("No analysis results available for charting")
+            return
+        
+        try:
+            # Get the selected chart type and options
+            chart_type = self.analysis_chart_selector.currentText()
+            
+            # Get selected data column
+            data_column = self.chart_data_column.currentText() if hasattr(self, 'chart_data_column') else "SCORE"
+            
+            # Get sort options
+            sort_column = self.chart_sort_column.currentText() if hasattr(self, 'chart_sort_column') else data_column
+            sort_ascending = self.chart_sort_order.currentText() == "Ascending" if hasattr(self, 'chart_sort_order') else False
+            
+            # Get limit options
+            limit_results = self.chart_limit_checkbox.isChecked() if hasattr(self, 'chart_limit_checkbox') else False
+            limit_value = self.chart_limit_value.value() if hasattr(self, 'chart_limit_value') else 10
+            
+            # Get display options
+            show_values = self.chart_show_values.isChecked() if hasattr(self, 'chart_show_values') else True
+            show_grid = self.chart_show_grid.isChecked() if hasattr(self, 'chart_show_grid') else True
+            
+            # Clear the figure
+            self.chart_figure.clear()
+            
+            # Set the chart background color to match application theme
+            self.chart_figure.patch.set_facecolor('#1A2742')
+            
+            # Create subplot
+            ax = self.chart_figure.add_subplot(111)
+            ax.set_facecolor('#1A2742')
+            
+            # Set grid visibility based on option
+            if show_grid:
+                ax.grid(True, color='#3A4762', linestyle='-', linewidth=0.5, alpha=0.7)
+            else:
+                ax.grid(False)
+            
+            # Set text colors
+            ax.xaxis.label.set_color('#FFFFFF')
+            ax.yaxis.label.set_color('#FFFFFF')
+            ax.title.set_color('#D4AF37')
+            for text in ax.get_xticklabels() + ax.get_yticklabels():
+                text.set_color('#FFFFFF')
+            
+            # Get data based on chart type
+            if chart_type == "Player Totals":
+                data = self.analysis_results['player_totals'].copy()
+                if len(data) > 0:
+                    # Make sure the data column exists
+                    if data_column not in data.columns:
+                        data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
+                    
+                    # Sort data
+                    if sort_column in data.columns:
+                        data = data.sort_values(sort_column, ascending=sort_ascending)
+                    
+                    # Limit results if needed
+                    if limit_results and len(data) > limit_value:
+                        if sort_ascending:
+                            data = data.head(limit_value)  # Keep first N rows if ascending
+                        else:
+                            data = data.tail(limit_value)  # Keep last N rows if descending
+                    
+                    # Create horizontal bar chart
+                    bars = ax.barh(data['PLAYER'].values, data[data_column].values, color='#D4AF37')
+                    ax.set_xlabel(f'{data_column.replace("_", " ").title()}')
+                    ax.set_title(f'Player {data_column.replace("_", " ").title()}')
+                    
+                    # Add values at the end of each bar if requested
+                    if show_values:
+                        for i, bar in enumerate(bars):
+                            value = data[data_column].values[i]
+                            ax.text(value, bar.get_y() + bar.get_height()/2, f" {value:,.0f}", 
+                                   va='center', color='white', fontweight='bold')
+                
+            elif chart_type == "Chest Totals":
+                data = self.analysis_results['chest_totals'].copy()
+                if len(data) > 0:
+                    # Make sure the data column exists
+                    if data_column not in data.columns:
+                        data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
+                    
+                    # Sort data
+                    if sort_column in data.columns:
+                        data = data.sort_values(sort_column, ascending=sort_ascending)
+                    
+                    # Limit results if needed
+                    if limit_results and len(data) > limit_value:
+                        if sort_ascending:
+                            data = data.head(limit_value)  # Keep first N rows if ascending
+                        else:
+                            data = data.tail(limit_value)  # Keep last N rows if descending
+                    
+                    # Create bar chart
+                    bars = ax.bar(data['CHEST'].values, data[data_column].values, color='#5991C4')
+                    ax.set_ylabel(f'{data_column.replace("_", " ").title()}')
+                    ax.set_title(f'Chest Type {data_column.replace("_", " ").title()}')
+                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+                    
+                    # Add values on top of each bar if requested
+                    if show_values:
+                        for bar in bars:
+                            height = bar.get_height()
+                            ax.text(bar.get_x() + bar.get_width()/2., height,
+                                   f'{height:,.0f}', ha='center', va='bottom', color='white', fontweight='bold')
+                
+            elif chart_type == "Source Totals":
+                data = self.analysis_results['source_totals'].copy()
+                if len(data) > 0:
+                    # Make sure the data column exists
+                    if data_column not in data.columns:
+                        data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
+                    
+                    # Sort data
+                    if sort_column in data.columns:
+                        data = data.sort_values(sort_column, ascending=sort_ascending)
+                    
+                    # Limit results if needed
+                    if limit_results and len(data) > limit_value:
+                        if sort_ascending:
+                            data = data.head(limit_value)  # Keep first N rows if ascending
+                        else:
+                            data = data.tail(limit_value)  # Keep last N rows if descending
+                    
+                    # Create pie chart
+                    pie_colors = ['#D4AF37', '#5991C4', '#6EC1A7', '#D46A5F', '#9966CC', '#F0C75A', '#527A96']
+                    wedges, texts, autotexts = ax.pie(
+                        data[data_column].values, 
+                        labels=data['SOURCE'].values, 
+                        autopct='%1.1f%%' if show_values else '',
+                        colors=pie_colors[:len(data)],
+                        startangle=90,
+                        wedgeprops={'edgecolor': '#1A2742', 'linewidth': 1}
+                    )
+                    for text in texts + autotexts:
+                        text.set_color('white')
+                    for autotext in autotexts:
+                        autotext.set_fontweight('bold')
+                    ax.set_title(f'Distribution by Source ({data_column.replace("_", " ").title()})')
+                
+            elif chart_type == "Date Totals":
+                data = self.analysis_results['date_totals'].copy()
+                if len(data) > 0:
+                    # Make sure the data column exists
+                    if data_column not in data.columns:
+                        data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
+                    
+                    # Sort data
+                    if sort_column in data.columns:
+                        data = data.sort_values(sort_column, ascending=sort_ascending)
+                    
+                    # Limit results if needed
+                    if limit_results and len(data) > limit_value:
+                        if sort_ascending:
+                            data = data.head(limit_value)  # Keep first N rows if ascending
+                        else:
+                            data = data.tail(limit_value)  # Keep last N rows if descending
+                    
+                    # Create line chart
+                    line = ax.plot(data['DATE'].values, data[data_column].values, marker='o', color='#6EC1A7', linewidth=2)
+                    ax.set_ylabel(f'{data_column.replace("_", " ").title()}')
+                    ax.set_title(f'{data_column.replace("_", " ").title()} Trends Over Time')
+                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+                    
+                    # Add values on data points if requested
+                    if show_values:
+                        for i, value in enumerate(data[data_column].values):
+                            ax.annotate(f'{value:,.0f}', 
+                                      (data['DATE'].values[i], value),
+                                      textcoords="offset points", 
+                                      xytext=(0,10), 
+                                      ha='center',
+                                      color='white',
+                                      fontweight='bold')
+            
+            # Adjust layout
+            self.chart_figure.tight_layout()
+            
+            # Refresh the canvas
+            self.chart_canvas.draw()
+            
+            if self.debug:
+                print(f"Chart updated: {chart_type}")
+                
+        except Exception as e:
+            if self.debug:
+                print(f"Error updating chart: {str(e)}")
+                traceback.print_exc()
+            self.statusBar().showMessage(f"Error updating chart: {str(e)}")
+    
+    def save_chart(self):
+        """Save the current chart to a file."""
+        if not hasattr(self, 'chart_figure'):
+            self.statusBar().showMessage("No chart to save")
+            return
+            
+        try:
+            # Get file name from dialog
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, 
+                "Save Chart", 
+                str(self.export_dir / "chart.png"),
+                "PNG Image (*.png);;JPEG Image (*.jpg);;PDF Document (*.pdf);;SVG Image (*.svg)"
+            )
+            
+            if not file_path:
+                return  # User canceled
+                
+            # Save the figure
+            self.chart_figure.savefig(
+                file_path,
+                dpi=300,
+                bbox_inches='tight',
+                facecolor=self.chart_figure.get_facecolor()
+            )
+            
+            self.statusBar().showMessage(f"Chart saved to {file_path}")
+            
+        except Exception as e:
+            self.statusBar().showMessage(f"Error saving chart: {str(e)}")
+            if self.debug:
+                print(f"Error saving chart: {str(e)}")
+                traceback.print_exc()
 
     def process_data(self):
         """Process the loaded data to prepare it for analysis and visualization."""
@@ -605,28 +856,34 @@ class MainWindow(QMainWindow):
         """
         Toggle the visibility of the value selection panel in the Raw Data tab.
         When checked, shows the panel and populates it with values.
-        When unchecked, hides the panel.
+        When unchecked, keeps the panel visible but clears it to maintain layout.
         """
         is_checked = self.show_value_selection.isChecked()
         
         if self.debug:
             print(f"Toggle value selection: state={is_checked}, is_visible={self.value_list_widget.isVisible()}")
         
-        # Set visibility based on checkbox state
-        if is_checked:
-            self.value_list_widget.show()
+        # Always keep the widget visible to maintain layout, but manage content
+        self.value_list_widget.setVisible(True)
+        
+        # Clear the list if checkbox is unchecked
+        if not is_checked:
+            self.value_list.clear()
+            # Disable the list and buttons when unchecked
+            self.value_list.setEnabled(False)
+            self.select_all_button.setEnabled(False)
+            self.deselect_all_button.setEnabled(False)
         else:
-            self.value_list_widget.hide()
+            # Enable the list and buttons when checked
+            self.value_list.setEnabled(True)
+            self.select_all_button.setEnabled(True)
+            self.deselect_all_button.setEnabled(True)
+            # Update the options if we have data
+            if self.raw_data is not None:
+                self.update_filter_options()
         
         if self.debug:
-            print(f"After show/hide({is_checked}): widget is visible={self.value_list_widget.isVisible()}, isHidden={self.value_list_widget.isHidden()}")
-        
-        # If becoming visible and we have data, update the filter options
-        if is_checked and self.raw_data is not None:
-            self.update_filter_options()
-        
-        if self.debug:
-            print(f"Final state: visible={self.value_list_widget.isVisible()}, hidden={self.value_list_widget.isHidden()}")
+            print(f"After toggle({is_checked}): widget is visible={self.value_list_widget.isVisible()}, list is enabled={self.value_list.isEnabled()}")
 
     def update_filter_options(self):
         """
@@ -694,7 +951,12 @@ class MainWindow(QMainWindow):
 
     def update_analysis_view(self):
         """Update the analysis view based on the selected analysis type."""
+        if self.debug:
+            print("\n--- UPDATE ANALYSIS VIEW ---")
+        
         if not hasattr(self, 'processed_data') or self.processed_data is None:
+            if self.debug:
+                print("No processed data available, showing empty message")
             # Create an empty DataFrame with a message
             result = pd.DataFrame({"Message": ["No data loaded. Please import a CSV file."]})
             model = CustomTableModel(result)
@@ -703,7 +965,14 @@ class MainWindow(QMainWindow):
             return
             
         analysis_type = self.analysis_selector.currentText()
-        df = self.processed_data.copy()
+        if self.debug:
+            print(f"Selected analysis type: {analysis_type}")
+        
+        df = self.analysis_data.copy() if hasattr(self, 'analysis_data') and self.analysis_data is not None else self.processed_data.copy()
+        
+        if self.debug:
+            print(f"Using data source: {'analysis_data' if hasattr(self, 'analysis_data') and self.analysis_data is not None else 'processed_data'}")
+            print(f"Data shape: {df.shape}")
         
         try:
             # Check for required columns
@@ -713,68 +982,87 @@ class MainWindow(QMainWindow):
             if missing_columns:
                 # Create a message about missing columns
                 missing_cols_str = ", ".join(missing_columns)
+                if self.debug:
+                    print(f"Missing required columns: {missing_cols_str}")
                 self.statusBar().showMessage(f"Missing required columns: {missing_cols_str}")
                 
                 # Create a simple DataFrame with a message
                 result = pd.DataFrame({
                     "Message": [f"Missing required columns: {missing_cols_str}"]
                 })
+                
+                # Set the model with the error message
+                model = CustomTableModel(result)
+                self.analysis_view.setModel(model)
+                return
+            
+            # Use the DataProcessor to analyze the data
+            if self.debug:
+                print("Calling DataProcessor.analyze_data...")
+            from modules.dataprocessor import DataProcessor
+            analysis_results = DataProcessor.analyze_data(df)
+            
+            if self.debug:
+                print("Analysis complete, available result types:")
+                for key in analysis_results.keys():
+                    print(f"  - {key}: {analysis_results[key].shape if isinstance(analysis_results[key], pd.DataFrame) else 'not a DataFrame'}")
+            
+            # Display different results based on selected analysis type
+            if analysis_type == "Player Overview":
+                result = analysis_results['player_overview']
+                if self.debug:
+                    print(f"Selected 'player_overview' with shape {result.shape}")
+                    print(f"Columns: {result.columns.tolist()}")
+                    if not result.empty:
+                        print(f"First row: {result.iloc[0].to_dict()}")
+            elif analysis_type == "Player Totals":
+                result = analysis_results['player_totals']
+                if self.debug:
+                    print(f"Selected 'player_totals' with shape {result.shape}")
+            elif analysis_type == "Chest Totals":
+                result = analysis_results['chest_totals']
+                if self.debug:
+                    print(f"Selected 'chest_totals' with shape {result.shape}")
+            elif analysis_type == "Source Totals":
+                result = analysis_results['source_totals']
+                if self.debug:
+                    print(f"Selected 'source_totals' with shape {result.shape}")
+            elif analysis_type == "Date Totals":
+                result = analysis_results['date_totals']
+                if self.debug:
+                    print(f"Selected 'date_totals' with shape {result.shape}")
             else:
-                # Different analysis based on the selected type
-                if analysis_type == "Player Overview":
-                    # Group by player and calculate various statistics
-                    result = df.groupby('PLAYER').agg({
-                        'SCORE': ['count', 'sum', 'mean', 'min', 'max'],
-                        'CHEST': lambda x: x.value_counts().index[0] if len(x) > 0 else None,
-                        'SOURCE': lambda x: x.value_counts().index[0] if len(x) > 0 else None
-                    })
-                    
-                    # Flatten multi-index columns
-                    result.columns = ['Count', 'Total Score', 'Average Score', 'Min Score', 'Max Score', 'Most Common Chest', 'Most Common Source']
-                    
-                    # Reset index to make Player a column
-                    result = result.reset_index()
-                    
-                elif analysis_type == "Player Totals":
-                    # Sum scores by player
-                    result = df.groupby('PLAYER')['SCORE'].sum().reset_index()
-                    result.columns = ['Player', 'Total Score']
-                    
-                elif analysis_type == "Chest Totals":
-                    # Sum scores by chest type
-                    result = df.groupby('CHEST')['SCORE'].sum().reset_index()
-                    result.columns = ['Chest Type', 'Total Score']
-                    
-                elif analysis_type == "Source Totals":
-                    # Sum scores by source
-                    result = df.groupby('SOURCE')['SCORE'].sum().reset_index()
-                    result.columns = ['Source', 'Total Score']
-                    
-                elif analysis_type == "Date Totals":
-                    # Sum scores by date
-                    if 'DATE' in df.columns:
-                        # Ensure Date is datetime
-                        df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
-                        # Group by date and sum scores
-                        result = df.groupby(df['DATE'].dt.date)['SCORE'].sum().reset_index()
-                        result.columns = ['Date', 'Total Score']
-                    else:
-                        result = pd.DataFrame(columns=['Date', 'Total Score'])
-                else:
-                    # Default to player overview
-                    result = df.groupby('PLAYER')['SCORE'].sum().reset_index()
+                # Default to player overview
+                result = analysis_results['player_overview']
+                if self.debug:
+                    print(f"No match for '{analysis_type}', defaulting to 'player_overview'")
             
             # Update the analysis table
+            if self.debug:
+                print(f"Creating table model with {len(result)} rows and {len(result.columns)} columns")
             model = CustomTableModel(result)
             self.analysis_view.setModel(model)
             self.analysis_view.resizeColumnsToContents()
             
+            # Store the analysis results for chart generation
+            self.analysis_results = analysis_results
+            
             # Update status
-            self.statusBar().showMessage(f"Analysis updated: {analysis_type}")
+            status_msg = f"Analysis updated: {analysis_type}"
+            if self.debug:
+                print(status_msg)
+            self.statusBar().showMessage(status_msg)
             
         except Exception as e:
-            self.statusBar().showMessage(f"Error in analysis: {str(e)}")
+            error_msg = f"Error in analysis: {str(e)}"
+            if self.debug:
+                print(error_msg)
+                traceback.print_exc()
+            self.statusBar().showMessage(error_msg)
             log_error("Error in analysis", e, show_traceback=True)
+        
+        if self.debug:
+            print("--- UPDATE ANALYSIS VIEW COMPLETE ---\n")
 
     def filter_analysis_data(self):
         """Apply filters to the analysis data."""
@@ -782,56 +1070,38 @@ class MainWindow(QMainWindow):
         # Implementation would go here
         pass
 
-    def reset_analysis_filter(self):
-        """Reset all analysis filters to their default state."""
-        # Reset date filter to last 30 days
-        today = QDate.currentDate()
-        thirty_days_ago = today.addDays(-30)
-        self.analysis_start_date_edit.setDate(thirty_days_ago)
-        self.analysis_end_date_edit.setDate(today)
-        
-        # Uncheck date filter if it's checked
-        if self.analysis_date_filter_enabled.isChecked():
-            self.analysis_date_filter_enabled.setChecked(False)
-        
-        # If value selection is visible, select all values
-        if self.analysis_show_value_selection.isChecked():
-            self.select_all_analysis_values()
-        
-        # Reprocess the data with no filters
-        if self.raw_data is not None and not self.raw_data.empty:
-            # Update the view with unfiltered data
-            self.update_analysis_view()
-        
-        # Update status
-        self.statusBar().showMessage("Analysis filters reset")
-
     def toggle_analysis_value_selection(self):
         """
         Toggle the visibility of the value selection panel in the Analysis tab.
         When checked, shows the panel and populates it with values.
-        When unchecked, hides the panel.
+        When unchecked, keeps the panel visible but clears it to maintain layout.
         """
         is_checked = self.analysis_show_value_selection.isChecked()
         
         if self.debug:
             print(f"Toggle analysis value selection: state={is_checked}, is_visible={self.analysis_value_panel.isVisible()}")
         
-        # Set visibility based on checkbox state
-        if is_checked:
-            self.analysis_value_panel.show()
+        # Always keep the panel visible to maintain layout, but manage content
+        self.analysis_value_panel.setVisible(True)
+        
+        # Clear the list if checkbox is unchecked
+        if not is_checked:
+            self.analysis_value_list.clear()
+            # Disable the list and buttons when unchecked
+            self.analysis_value_list.setEnabled(False)
+            self.select_all_analysis_button.setEnabled(False)
+            self.deselect_all_analysis_button.setEnabled(False)
         else:
-            self.analysis_value_panel.hide()
+            # Enable the list and buttons when checked
+            self.analysis_value_list.setEnabled(True)
+            self.select_all_analysis_button.setEnabled(True)
+            self.deselect_all_analysis_button.setEnabled(True)
+            # Update the options if we have data
+            if self.raw_data is not None:
+                self.update_analysis_filter_options()
         
         if self.debug:
-            print(f"After show/hide({is_checked}): panel is visible={self.analysis_value_panel.isVisible()}, isHidden={self.analysis_value_panel.isHidden()}")
-        
-        # If becoming visible and we have data, update the filter options
-        if is_checked and self.raw_data is not None:
-            self.update_analysis_filter_options()
-        
-        if self.debug:
-            print(f"Final state: visible={self.analysis_value_panel.isVisible()}, hidden={self.analysis_value_panel.isHidden()}")
+            print(f"After toggle({is_checked}): panel is visible={self.analysis_value_panel.isVisible()}, list is enabled={self.analysis_value_list.isEnabled()}")
 
     def select_all_analysis_values(self):
         """Select all values in the analysis value list."""
@@ -1060,15 +1330,16 @@ class MainWindow(QMainWindow):
         self.show_value_selection.setChecked(True)
         filter_layout.addWidget(self.show_value_selection)
         
-        # Value selection area
+        # Value selection area - Make it use all available vertical space
         self.value_list_widget = QWidget()
         value_list_layout = QVBoxLayout(self.value_list_widget)
         value_list_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Value list with multiple selection
+        # Value list with multiple selection - Set to expand vertically
         self.value_list = QListWidget()
         self.value_list.setSelectionMode(QAbstractItemView.MultiSelection)
-        value_list_layout.addWidget(self.value_list)
+        self.value_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        value_list_layout.addWidget(self.value_list, 1)  # Set stretch factor to 1 to use all available space
         
         # Value selection buttons
         button_layout = QHBoxLayout()
@@ -1079,7 +1350,7 @@ class MainWindow(QMainWindow):
         value_list_layout.addLayout(button_layout)
         
         # Add value selection to filter layout
-        filter_layout.addWidget(self.value_list_widget)
+        filter_layout.addWidget(self.value_list_widget, 1)  # Set stretch factor to 1 to use all available space
         
         # Make sure the widget is visible initially if checkbox is checked
         if self.debug:
@@ -1094,8 +1365,8 @@ class MainWindow(QMainWindow):
         filter_layout.addLayout(action_layout)
         
         filter_group.setLayout(filter_layout)
-        left_layout.addWidget(filter_group)
-        left_layout.addStretch()
+        left_layout.addWidget(filter_group, 1)  # Set stretch factor to 1 to use all available space
+        left_layout.addStretch(0)  # Reduce the stretch factor to 0
         
         # Add left panel to splitter
         raw_data_splitter.addWidget(left_panel)
@@ -1161,15 +1432,16 @@ class MainWindow(QMainWindow):
         self.analysis_show_value_selection.setChecked(True)
         filter_layout.addWidget(self.analysis_show_value_selection)
         
-        # Create value list widget
+        # Create value list widget - Make it use all available vertical space
         self.analysis_value_panel = QWidget()
         value_panel_layout = QVBoxLayout(self.analysis_value_panel)
         value_panel_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Value list
+        # Value list - Set to expand vertically
         self.analysis_value_list = QListWidget()
         self.analysis_value_list.setSelectionMode(QAbstractItemView.MultiSelection)
-        value_panel_layout.addWidget(self.analysis_value_list)
+        self.analysis_value_list.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        value_panel_layout.addWidget(self.analysis_value_list, 1)  # Set stretch factor to 1 to use all available space
         
         # Select/Deselect buttons
         button_layout = QHBoxLayout()
@@ -1180,7 +1452,7 @@ class MainWindow(QMainWindow):
         value_panel_layout.addLayout(button_layout)
         
         # Add value panel to filter layout
-        filter_layout.addWidget(self.analysis_value_panel)
+        filter_layout.addWidget(self.analysis_value_panel, 1)  # Set stretch factor to 1 to use all available space
         
         # Make sure the panel is visible initially if checkbox is checked
         if self.debug:
@@ -1195,8 +1467,8 @@ class MainWindow(QMainWindow):
         filter_layout.addLayout(action_layout)
         
         filter_group.setLayout(filter_layout)
-        left_layout.addWidget(filter_group)
-        left_layout.addStretch()
+        left_layout.addWidget(filter_group, 1)  # Set stretch factor to 1 to use all available space
+        left_layout.addStretch(0)  # Reduce the stretch factor to 0
         
         # Add left panel to splitter
         analysis_splitter.addWidget(left_panel)
@@ -1223,9 +1495,12 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
         
-        # Create chart controls
-        chart_controls = QHBoxLayout()
-        chart_type_label = QLabel("Chart Type:")
+        # Create chart controls panel
+        chart_controls_group = QGroupBox("Chart Customization")
+        chart_controls_layout = QGridLayout()
+        
+        # Chart type selection
+        chart_controls_layout.addWidget(QLabel("Chart Type:"), 0, 0)
         self.analysis_chart_selector = QComboBox()
         self.analysis_chart_selector.addItems([
             "Player Totals",
@@ -1233,17 +1508,69 @@ class MainWindow(QMainWindow):
             "Source Totals",
             "Date Totals"
         ])
-        chart_controls.addWidget(chart_type_label)
-        chart_controls.addWidget(self.analysis_chart_selector)
-        chart_controls.addStretch()
+        chart_controls_layout.addWidget(self.analysis_chart_selector, 0, 1)
         
-        # Create matplotlib canvas placeholder
-        canvas_placeholder = QWidget()
-        canvas_placeholder.setStyleSheet("background-color: #2D2D30;")
+        # Data column selection
+        chart_controls_layout.addWidget(QLabel("Data Column:"), 0, 2)
+        self.chart_data_column = QComboBox()
+        self.chart_data_column.addItems(["SCORE", "CHEST_COUNT", "TOTAL_SCORE"])
+        chart_controls_layout.addWidget(self.chart_data_column, 0, 3)
         
-        # Add widgets to chart layout
-        layout.addLayout(chart_controls)
-        layout.addWidget(canvas_placeholder)
+        # Sort options
+        chart_controls_layout.addWidget(QLabel("Sort By:"), 1, 0)
+        self.chart_sort_column = QComboBox()
+        self.chart_sort_column.addItems(["SCORE", "CHEST_COUNT", "TOTAL_SCORE", "PLAYER", "DATE", "SOURCE", "CHEST"])
+        chart_controls_layout.addWidget(self.chart_sort_column, 1, 1)
+        
+        chart_controls_layout.addWidget(QLabel("Sort Order:"), 1, 2)
+        self.chart_sort_order = QComboBox()
+        self.chart_sort_order.addItems(["Descending", "Ascending"])
+        chart_controls_layout.addWidget(self.chart_sort_order, 1, 3)
+        
+        # Limit results
+        chart_controls_layout.addWidget(QLabel("Limit Results:"), 2, 0)
+        self.chart_limit_checkbox = QCheckBox("Show only top")
+        chart_controls_layout.addWidget(self.chart_limit_checkbox, 2, 1)
+        
+        self.chart_limit_value = QSpinBox()
+        self.chart_limit_value.setRange(1, 50)
+        self.chart_limit_value.setValue(10)
+        self.chart_limit_value.setSuffix(" items")
+        chart_controls_layout.addWidget(self.chart_limit_value, 2, 2)
+        
+        # Display options
+        chart_controls_layout.addWidget(QLabel("Display Options:"), 3, 0)
+        self.chart_show_values = QCheckBox("Show values")
+        self.chart_show_values.setChecked(True)
+        chart_controls_layout.addWidget(self.chart_show_values, 3, 1)
+        
+        self.chart_show_grid = QCheckBox("Show grid")
+        self.chart_show_grid.setChecked(True)
+        chart_controls_layout.addWidget(self.chart_show_grid, 3, 2)
+        
+        # Action buttons
+        self.apply_chart_options = QPushButton("Apply Options")
+        chart_controls_layout.addWidget(self.apply_chart_options, 4, 0, 1, 2)
+        
+        self.save_chart_button = QPushButton("Save Chart")
+        chart_controls_layout.addWidget(self.save_chart_button, 4, 2, 1, 2)
+        
+        # Set the layout for chart controls group
+        chart_controls_group.setLayout(chart_controls_layout)
+        layout.addWidget(chart_controls_group)
+        
+        # Create a matplotlib figure
+        self.chart_figure = Figure(figsize=(10, 6), dpi=100)
+        self.chart_canvas = FigureCanvas(self.chart_figure)
+        
+        # Set up the canvas to use most of the space
+        self.chart_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout.addWidget(self.chart_canvas, 1)  # Add with stretch factor 1 to use available space
+        
+        # Connect signals
+        self.analysis_chart_selector.currentIndexChanged.connect(self.update_chart)
+        self.apply_chart_options.clicked.connect(self.update_chart)
+        self.save_chart_button.clicked.connect(self.save_chart)
         
         if self.debug:
             print("Charts tab setup complete")
@@ -1329,6 +1656,8 @@ class MainWindow(QMainWindow):
             self.apply_analysis_filter_button.clicked.connect(self.apply_analysis_filter)
         if hasattr(self, 'reset_analysis_filter_button'):
             self.reset_analysis_filter_button.clicked.connect(self.reset_analysis_filter)
+        if hasattr(self, 'analysis_selector'):
+            self.analysis_selector.currentIndexChanged.connect(self.update_analysis_view)
         if hasattr(self, 'analysis_chart_selector'):
             self.analysis_chart_selector.currentIndexChanged.connect(self.update_chart)
         
@@ -1346,22 +1675,3 @@ class MainWindow(QMainWindow):
         
         if file_path:
             self.load_csv_file(file_path)
-
-    def update_analysis_view(self):
-        """Update the analysis view with the current analysis data."""
-        if self.analysis_data is None:
-            return
-        
-        # Create a model for the analysis view
-        from modules.customtablemodel import CustomTableModel
-        model = CustomTableModel(self.analysis_data)
-        
-        # Set the model for the table
-        if hasattr(self, 'analysis_view'):
-            self.analysis_view.setModel(model)
-            
-            # Resize columns to content
-            self.analysis_view.resizeColumnsToContents()
-            
-            if self.debug:
-                print(f"Updated analysis view with {len(self.analysis_data)} rows")
