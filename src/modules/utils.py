@@ -146,7 +146,7 @@ class ConfigManager:
         'recent_files': [],
         'max_recent_files': 5,
         'import_dir': os.path.join(os.getcwd(), 'import'),
-        'export_dir': os.path.join(os.getcwd(), 'export'),
+        'export_dir': os.path.join(os.getcwd(), 'exports'),
         'encodings': ['utf-8', 'latin1', 'cp1252', 'iso-8859-1', 'windows-1252', 'utf-8-sig']
         }
         
@@ -279,5 +279,5 @@ class ConfigManager:
         Returns:
         str: The export directory path.
         """
-        return self.config.get('export_dir', os.path.join(os.getcwd(), 'export'))
+        return self.config.get('export_dir', os.path.join(os.getcwd(), 'exports'))
 

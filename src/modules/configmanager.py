@@ -48,7 +48,7 @@ class ConfigManager:
             'recent_files': [],
             'max_recent_files': 5,
             'import_dir': os.path.join(os.getcwd(), 'import'),
-            'export_dir': os.path.join(os.getcwd(), 'export')
+            'export_dir': os.path.join(os.getcwd(), 'exports')
         }
         
     def save_config(self):
@@ -196,6 +196,6 @@ class ConfigManager:
         Returns:
             str: The export directory path.
         """
-        return self.config.get('export_dir', os.path.join(os.getcwd(), 'export'))
+        return self.config.get('export_dir', os.path.join(os.getcwd(), 'exports'))
 
 

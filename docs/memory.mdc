@@ -135,20 +135,46 @@ alwaysApply: false
 - 2024-06-11: Implemented chart saving functionality supporting multiple formats (PNG, JPG, PDF, SVG)
 - 2024-06-11: Enhanced chart value display with better positioning and bold text for improved readability
 - 2024-06-13: Fixed layout change issue when toggling "Select specific values" checkbox in filter panels
+- 2024-06-14: Reorganized chart controls to separate chart types from data categories
+- 2024-06-14: Fixed sorting logic when limiting results to properly sort before applying limits
+- 2024-06-14: Added support for different chart types (Bar, Horizontal Bar, Pie, Line) independent of data categories
+- 2024-06-15: Added CSV and Excel export options for chart data to support spreadsheet applications
+- 2024-06-15: Improved chart control UI organization with logical grouping and better labeling
+- 2024-06-15: Fixed the relationship between "Show only top" checkbox and its related spin box
+- 2024-06-15: Added explanatory text to clarify the relationship between data categories and values
+- 2024-06-16: Completely redesigned Charts tab layout with horizontal splitter to maximize chart area
+- 2024-06-16: Simplified data selection by removing redundant "Value to Measure" field
+- 2024-06-16: Added automatic data column selection based on the chosen data category
+- 2024-06-16: Fixed chart export functionality to work with hidden chart_data_column
+- 2024-06-16: Standardized export directory name to 'exports' across all application components
 
 ## Current Tasks
 - UI Layout Improvements:
   - Fixed issue in the Raw Data and Analysis tabs where filter/view options didn't use full vertical space
   - Fixed issue in the Charts tab where an empty section was displayed instead of using the full space for charts
   - Fixed issue where deselecting "Select specific values" checkbox would change the layout of the filter box
+  - Reorganized chart controls to properly separate:
+    - Chart types (Bar Chart, Horizontal Bar, Pie Chart, Line Chart)
+    - Data categories (Player Totals, Chest Totals, Source Totals, Date Totals)
+    - Data columns (SCORE, CHEST_COUNT, TOTAL_SCORE)
+  - Fixed sorting logic when limiting results to ensure proper order with top N items
   - Added comprehensive chart customization options including:
-    - Data column selection (SCORE, CHEST_COUNT, TOTAL_SCORE)
     - Sorting options by column and direction
     - Results limiting with top N control
     - Display options for value labels and grid lines
     - Chart saving functionality with multiple format support
+  - Enhanced chart UI with logical grouping of related controls:
+    - Added explanatory text to clarify relationships between controls
+    - Organized controls into functional groups with clear labels
+    - Improved layout of related controls like checkboxes and their settings
+  - Added data export functionality for Excel/Google Sheets:
+    - Added CSV export option
+    - Added Excel XLSX export with fallback to CSV
+    - Added export type selection dialog
   - Implemented proper widget size policies for better space utilization
   - Used stretch factors to optimize vertical space in layouts
+  - Redesigned Charts tab with horizontal splitter layout (controls on left, chart on right)
+  - Simplified data selection by automating data column choice based on data category
 
 ## Dependencies
 - PySide6: 6.8.2.1

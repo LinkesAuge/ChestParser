@@ -30,7 +30,8 @@ from PySide6.QtWidgets import (
     QFileDialog, QMessageBox, QTableView, QTabWidget, QSplitter, QFrame,
     QComboBox, QLineEdit, QGroupBox, QCheckBox, QListWidget, QHeaderView,
     QAbstractItemView, QDateEdit, QTextBrowser, QApplication,
-    QListWidgetItem, QStatusBar, QGridLayout, QSizePolicy, QSpinBox
+    QListWidgetItem, QStatusBar, QGridLayout, QSizePolicy, QSpinBox, QDialog,
+    QDialogButtonBox, QRadioButton
 )
 from PySide6.QtCore import Qt, QTimer, QDate, QSettings, QDir, Signal, QSortFilterProxyModel
 from PySide6.QtGui import QIcon, QColor
@@ -88,6 +89,10 @@ class MainWindow(QMainWindow):
         # Create directories if they don't exist
         os.makedirs(self.import_dir, exist_ok=True)
         os.makedirs(self.export_dir, exist_ok=True)
+        
+        if self.debug:
+            print(f"Import directory: {self.import_dir}")
+            print(f"Export directory: {self.export_dir}")
         
         # Set window size from config
         width, height = self.config_manager.get_window_size()
@@ -413,14 +418,14 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Analysis filters reset")
 
     def update_chart(self):
-        """Update the chart based on the selected chart type and options."""
+        """Update the chart based on the selected data category, chart type, and options."""
         if self.debug:
             print(f"Update chart called")
         
-        # Check if we have a chart selector and canvas
-        if not hasattr(self, 'analysis_chart_selector') or not hasattr(self, 'chart_canvas'):
+        # Check if we have necessary UI components
+        if not hasattr(self, 'chart_data_category') or not hasattr(self, 'chart_type_selector') or not hasattr(self, 'chart_canvas'):
             if self.debug:
-                print("Chart selector or canvas not found")
+                print("Chart UI components not found")
             return
             
         # Check if we have analysis results
@@ -430,8 +435,9 @@ class MainWindow(QMainWindow):
             return
         
         try:
-            # Get the selected chart type and options
-            chart_type = self.analysis_chart_selector.currentText()
+            # Get the selected options
+            data_category = self.chart_data_category.currentText()
+            chart_type = self.chart_type_selector.currentText()
             
             # Get selected data column
             data_column = self.chart_data_column.currentText() if hasattr(self, 'chart_data_column') else "SCORE"
@@ -471,136 +477,113 @@ class MainWindow(QMainWindow):
             for text in ax.get_xticklabels() + ax.get_yticklabels():
                 text.set_color('#FFFFFF')
             
-            # Get data based on chart type
-            if chart_type == "Player Totals":
+            # Get data based on data category
+            if data_category == "Player Totals":
                 data = self.analysis_results['player_totals'].copy()
-                if len(data) > 0:
-                    # Make sure the data column exists
-                    if data_column not in data.columns:
-                        data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
-                    
-                    # Sort data
-                    if sort_column in data.columns:
-                        data = data.sort_values(sort_column, ascending=sort_ascending)
-                    
-                    # Limit results if needed
-                    if limit_results and len(data) > limit_value:
-                        if sort_ascending:
-                            data = data.head(limit_value)  # Keep first N rows if ascending
-                        else:
-                            data = data.tail(limit_value)  # Keep last N rows if descending
-                    
-                    # Create horizontal bar chart
-                    bars = ax.barh(data['PLAYER'].values, data[data_column].values, color='#D4AF37')
-                    ax.set_xlabel(f'{data_column.replace("_", " ").title()}')
-                    ax.set_title(f'Player {data_column.replace("_", " ").title()}')
-                    
-                    # Add values at the end of each bar if requested
-                    if show_values:
-                        for i, bar in enumerate(bars):
-                            value = data[data_column].values[i]
-                            ax.text(value, bar.get_y() + bar.get_height()/2, f" {value:,.0f}", 
-                                   va='center', color='white', fontweight='bold')
-                
-            elif chart_type == "Chest Totals":
+                category_column = 'PLAYER'
+            elif data_category == "Chest Totals":
                 data = self.analysis_results['chest_totals'].copy()
-                if len(data) > 0:
-                    # Make sure the data column exists
-                    if data_column not in data.columns:
-                        data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
-                    
-                    # Sort data
-                    if sort_column in data.columns:
-                        data = data.sort_values(sort_column, ascending=sort_ascending)
-                    
-                    # Limit results if needed
-                    if limit_results and len(data) > limit_value:
-                        if sort_ascending:
-                            data = data.head(limit_value)  # Keep first N rows if ascending
-                        else:
-                            data = data.tail(limit_value)  # Keep last N rows if descending
-                    
-                    # Create bar chart
-                    bars = ax.bar(data['CHEST'].values, data[data_column].values, color='#5991C4')
-                    ax.set_ylabel(f'{data_column.replace("_", " ").title()}')
-                    ax.set_title(f'Chest Type {data_column.replace("_", " ").title()}')
-                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-                    
-                    # Add values on top of each bar if requested
-                    if show_values:
-                        for bar in bars:
-                            height = bar.get_height()
-                            ax.text(bar.get_x() + bar.get_width()/2., height,
-                                   f'{height:,.0f}', ha='center', va='bottom', color='white', fontweight='bold')
-                
-            elif chart_type == "Source Totals":
+                category_column = 'CHEST'
+            elif data_category == "Source Totals":
                 data = self.analysis_results['source_totals'].copy()
-                if len(data) > 0:
-                    # Make sure the data column exists
-                    if data_column not in data.columns:
-                        data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
-                    
-                    # Sort data
-                    if sort_column in data.columns:
-                        data = data.sort_values(sort_column, ascending=sort_ascending)
-                    
-                    # Limit results if needed
-                    if limit_results and len(data) > limit_value:
-                        if sort_ascending:
-                            data = data.head(limit_value)  # Keep first N rows if ascending
-                        else:
-                            data = data.tail(limit_value)  # Keep last N rows if descending
-                    
-                    # Create pie chart
-                    pie_colors = ['#D4AF37', '#5991C4', '#6EC1A7', '#D46A5F', '#9966CC', '#F0C75A', '#527A96']
-                    wedges, texts, autotexts = ax.pie(
-                        data[data_column].values, 
-                        labels=data['SOURCE'].values, 
-                        autopct='%1.1f%%' if show_values else '',
-                        colors=pie_colors[:len(data)],
-                        startangle=90,
-                        wedgeprops={'edgecolor': '#1A2742', 'linewidth': 1}
-                    )
-                    for text in texts + autotexts:
-                        text.set_color('white')
-                    for autotext in autotexts:
-                        autotext.set_fontweight('bold')
-                    ax.set_title(f'Distribution by Source ({data_column.replace("_", " ").title()})')
-                
-            elif chart_type == "Date Totals":
+                category_column = 'SOURCE'
+            elif data_category == "Date Totals":
                 data = self.analysis_results['date_totals'].copy()
-                if len(data) > 0:
-                    # Make sure the data column exists
-                    if data_column not in data.columns:
-                        data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
-                    
-                    # Sort data
-                    if sort_column in data.columns:
-                        data = data.sort_values(sort_column, ascending=sort_ascending)
-                    
-                    # Limit results if needed
-                    if limit_results and len(data) > limit_value:
-                        if sort_ascending:
-                            data = data.head(limit_value)  # Keep first N rows if ascending
-                        else:
-                            data = data.tail(limit_value)  # Keep last N rows if descending
-                    
-                    # Create line chart
-                    line = ax.plot(data['DATE'].values, data[data_column].values, marker='o', color='#6EC1A7', linewidth=2)
-                    ax.set_ylabel(f'{data_column.replace("_", " ").title()}')
-                    ax.set_title(f'{data_column.replace("_", " ").title()} Trends Over Time')
-                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-                    
-                    # Add values on data points if requested
-                    if show_values:
-                        for i, value in enumerate(data[data_column].values):
-                            ax.annotate(f'{value:,.0f}', 
-                                      (data['DATE'].values[i], value),
-                                      textcoords="offset points", 
-                                      xytext=(0,10), 
-                                      ha='center',
-                                      color='white',
-                                      fontweight='bold')
+                category_column = 'DATE'
+            else:
+                if self.debug:
+                    print(f"Unknown data category: {data_category}")
+                return
+            
+            # Check if we have data to display
+            if len(data) == 0:
+                if self.debug:
+                    print(f"No data available for {data_category}")
+                return
+            
+            # Make sure the data column exists
+            if data_column not in data.columns:
+                data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
+                if self.debug:
+                    print(f"Column {data_column} not found, falling back to SCORE")
+            
+            # Sort data
+            if sort_column in data.columns:
+                data = data.sort_values(sort_column, ascending=sort_ascending)
+                if self.debug:
+                    print(f"Sorted data by {sort_column} (ascending={sort_ascending})")
+            
+            # Now apply limit to the sorted data
+            if limit_results and len(data) > limit_value:
+                # For descending order, we want the HIGHEST values, which are at the BEGINNING of the sorted data
+                # For ascending order, we want the LOWEST values, which are at the BEGINNING of the sorted data
+                data = data.head(limit_value)
+                if self.debug:
+                    print(f"Limited to top {limit_value} items after sorting")
+            
+            # Adjust category order based on the chart type
+            # For horizontal bar charts, reverse the order to display in proper vertical order
+            if chart_type == "Horizontal Bar" and not sort_ascending:
+                data = data.iloc[::-1].reset_index(drop=True)
+            
+            # Create chart based on selected chart type
+            if chart_type == "Bar Chart":
+                bars = ax.bar(data[category_column].values, data[data_column].values, color='#5991C4')
+                ax.set_ylabel(f'{data_column.replace("_", " ").title()}')
+                ax.set_title(f'{data_category}: {data_column.replace("_", " ").title()}')
+                plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+                
+                # Add values on top of each bar if requested
+                if show_values:
+                    for bar in bars:
+                        height = bar.get_height()
+                        ax.text(bar.get_x() + bar.get_width()/2., height,
+                               f'{height:,.0f}', ha='center', va='bottom', color='white', fontweight='bold')
+                               
+            elif chart_type == "Horizontal Bar":
+                bars = ax.barh(data[category_column].values, data[data_column].values, color='#D4AF37')
+                ax.set_xlabel(f'{data_column.replace("_", " ").title()}')
+                ax.set_title(f'{data_category}: {data_column.replace("_", " ").title()}')
+                
+                # Add values at the end of each bar if requested
+                if show_values:
+                    for i, bar in enumerate(bars):
+                        value = data[data_column].values[i]
+                        ax.text(value, bar.get_y() + bar.get_height()/2, f" {value:,.0f}", 
+                               va='center', color='white', fontweight='bold')
+                
+            elif chart_type == "Pie Chart":
+                pie_colors = ['#D4AF37', '#5991C4', '#6EC1A7', '#D46A5F', '#9966CC', '#F0C75A', '#527A96']
+                wedges, texts, autotexts = ax.pie(
+                    data[data_column].values, 
+                    labels=data[category_column].values, 
+                    autopct='%1.1f%%' if show_values else '',
+                    colors=pie_colors[:len(data)],
+                    startangle=90,
+                    wedgeprops={'edgecolor': '#1A2742', 'linewidth': 1}
+                )
+                for text in texts + autotexts:
+                    text.set_color('white')
+                for autotext in autotexts:
+                    autotext.set_fontweight('bold')
+                ax.set_title(f'{data_category}: {data_column.replace("_", " ").title()} Distribution')
+                
+            elif chart_type == "Line Chart":
+                line = ax.plot(data[category_column].values, data[data_column].values, marker='o', color='#6EC1A7', linewidth=2)
+                ax.set_ylabel(f'{data_column.replace("_", " ").title()}')
+                ax.set_title(f'{data_category}: {data_column.replace("_", " ").title()} Trends')
+                plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+                
+                # Add values on data points if requested
+                if show_values:
+                    for i, value in enumerate(data[data_column].values):
+                        ax.annotate(f'{value:,.0f}', 
+                                  (data[category_column].values[i], value),
+                                  textcoords="offset points", 
+                                  xytext=(0,10), 
+                                  ha='center',
+                                  color='white',
+                                  fontweight='bold')
             
             # Adjust layout
             self.chart_figure.tight_layout()
@@ -609,7 +592,7 @@ class MainWindow(QMainWindow):
             self.chart_canvas.draw()
             
             if self.debug:
-                print(f"Chart updated: {chart_type}")
+                print(f"Chart updated: {chart_type} for {data_category}")
                 
         except Exception as e:
             if self.debug:
@@ -618,32 +601,167 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Error updating chart: {str(e)}")
     
     def save_chart(self):
-        """Save the current chart to a file."""
+        """Save the current chart to a file or export data for spreadsheet use."""
         if not hasattr(self, 'chart_figure'):
             self.statusBar().showMessage("No chart to save")
             return
             
         try:
-            # Get file name from dialog
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, 
-                "Save Chart", 
-                str(self.export_dir / "chart.png"),
-                "PNG Image (*.png);;JPEG Image (*.jpg);;PDF Document (*.pdf);;SVG Image (*.svg)"
-            )
+            # Get export options
+            export_options = QDialog(self)
+            export_options.setWindowTitle("Export Options")
+            export_options.setMinimumWidth(300)
             
-            if not file_path:
-                return  # User canceled
+            export_layout = QVBoxLayout(export_options)
+            
+            export_type_group = QGroupBox("Export Type")
+            export_type_layout = QVBoxLayout()
+            
+            image_radio = QRadioButton("Export as Image")
+            image_radio.setChecked(True)
+            data_radio = QRadioButton("Export Data for Excel/Sheets")
+            
+            export_type_layout.addWidget(image_radio)
+            export_type_layout.addWidget(data_radio)
+            export_type_group.setLayout(export_type_layout)
+            
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            buttons.accepted.connect(export_options.accept)
+            buttons.rejected.connect(export_options.reject)
+            
+            export_layout.addWidget(export_type_group)
+            export_layout.addWidget(buttons)
+            
+            # Show dialog and get result
+            if export_options.exec() != QDialog.Accepted:
+                return
+            
+            # Determine export type
+            export_as_image = image_radio.isChecked()
+            
+            if export_as_image:
+                # Export as image (PNG, JPG, PDF, SVG)
+                file_path, selected_filter = QFileDialog.getSaveFileName(
+                    self, 
+                    "Save Chart as Image", 
+                    str(self.export_dir / "chart.png"),
+                    "PNG Image (*.png);;JPEG Image (*.jpg);;PDF Document (*.pdf);;SVG Image (*.svg)"
+                )
                 
-            # Save the figure
-            self.chart_figure.savefig(
-                file_path,
-                dpi=300,
-                bbox_inches='tight',
-                facecolor=self.chart_figure.get_facecolor()
-            )
-            
-            self.statusBar().showMessage(f"Chart saved to {file_path}")
+                if not file_path:
+                    return  # User canceled
+                    
+                # Save the figure
+                self.chart_figure.savefig(
+                    file_path,
+                    dpi=300,
+                    bbox_inches='tight',
+                    facecolor=self.chart_figure.get_facecolor()
+                )
+                
+                self.statusBar().showMessage(f"Chart saved to {file_path}")
+            else:
+                # Export data as CSV for Excel/Google Sheets
+                file_path, _ = QFileDialog.getSaveFileName(
+                    self, 
+                    "Export Chart Data", 
+                    str(self.export_dir / "chart_data.csv"),
+                    "CSV File (*.csv);;Excel File (*.xlsx)"
+                )
+                
+                if not file_path:
+                    return  # User canceled
+                
+                # Get the current chart data
+                try:
+                    # Get data based on data category
+                    data_category = self.chart_data_category.currentText()
+                    if data_category == "Player Totals":
+                        data = self.analysis_results['player_totals'].copy()
+                    elif data_category == "Chest Totals":
+                        data = self.analysis_results['chest_totals'].copy()
+                    elif data_category == "Source Totals":
+                        data = self.analysis_results['source_totals'].copy()
+                    elif data_category == "Date Totals":
+                        data = self.analysis_results['date_totals'].copy()
+                    else:
+                        self.statusBar().showMessage(f"Unknown data category: {data_category}")
+                        return
+                    
+                    # Check if we have data to export
+                    if len(data) == 0:
+                        self.statusBar().showMessage(f"No data available to export")
+                        return
+                    
+                    # Get the appropriate data column based on the data category
+                    # Since chart_data_column is now hidden but initialized in update_chart_data_column,
+                    # we need to access it explicitly
+                    if hasattr(self, 'chart_data_column'):
+                        data_column = self.chart_data_column.currentText()
+                    else:
+                        # Fallback based on data category
+                        if data_category == "Player Totals":
+                            data_column = "SCORE"
+                        elif data_category == "Chest Totals":
+                            data_column = "CHEST_COUNT"
+                        elif data_category == "Source Totals":
+                            data_column = "SCORE"
+                        elif data_category == "Date Totals":
+                            data_column = "SCORE"
+                        else:
+                            data_column = "SCORE"  # Default fallback
+                        
+                        if self.debug:
+                            print(f"Using fallback data column: {data_column} for {data_category}")
+                    
+                    sort_column = self.chart_sort_column.currentText()
+                    sort_ascending = self.chart_sort_order.currentText() == "Ascending"
+                    limit_results = self.chart_limit_checkbox.isChecked()
+                    limit_value = self.chart_limit_value.value()
+                    
+                    # Make sure the data column exists
+                    if data_column not in data.columns:
+                        data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
+                        if self.debug:
+                            print(f"Column {data_column} not found, falling back to SCORE")
+                    
+                    # Sort data
+                    if sort_column in data.columns:
+                        data = data.sort_values(sort_column, ascending=sort_ascending)
+                        if self.debug:
+                            print(f"Sorted data by {sort_column} (ascending={sort_ascending})")
+                    
+                    # Apply limit if needed
+                    if limit_results and len(data) > limit_value:
+                        data = data.head(limit_value)
+                        if self.debug:
+                            print(f"Limited to top {limit_value} items after sorting")
+                    
+                    # Export to file
+                    if file_path.lower().endswith('.csv'):
+                        data.to_csv(file_path, index=False)
+                    elif file_path.lower().endswith('.xlsx'):
+                        try:
+                            data.to_excel(file_path, index=False)
+                        except ImportError:
+                            # If openpyxl is not installed, show an error message
+                            QMessageBox.warning(
+                                self,
+                                "Excel Export Error",
+                                "Excel export requires the openpyxl package. Saving as CSV instead.",
+                                QMessageBox.Ok
+                            )
+                            # Save as CSV instead
+                            file_path = file_path.replace('.xlsx', '.csv')
+                            data.to_csv(file_path, index=False)
+                    
+                    self.statusBar().showMessage(f"Chart data exported to {file_path}")
+                
+                except Exception as e:
+                    if self.debug:
+                        print(f"Error exporting chart data: {str(e)}")
+                        traceback.print_exc()
+                    self.statusBar().showMessage(f"Error exporting chart data: {str(e)}")
             
         except Exception as e:
             self.statusBar().showMessage(f"Error saving chart: {str(e)}")
@@ -1495,85 +1613,177 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
         
-        # Create chart controls panel
+        # Create horizontal splitter for controls and chart
+        charts_splitter = QSplitter(Qt.Horizontal)
+        
+        # Create left panel for chart controls
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(5, 5, 5, 5)
+        left_layout.setSpacing(5)
+        
+        # Create chart controls group
         chart_controls_group = QGroupBox("Chart Customization")
-        chart_controls_layout = QGridLayout()
+        chart_controls_layout = QVBoxLayout()
+        chart_controls_layout.setSpacing(10)
         
         # Chart type selection
-        chart_controls_layout.addWidget(QLabel("Chart Type:"), 0, 0)
-        self.analysis_chart_selector = QComboBox()
-        self.analysis_chart_selector.addItems([
+        chart_type_layout = QHBoxLayout()
+        chart_type_layout.addWidget(QLabel("Chart Type:"))
+        self.chart_type_selector = QComboBox()
+        self.chart_type_selector.addItems([
+            "Bar Chart",
+            "Horizontal Bar",
+            "Pie Chart",
+            "Line Chart"
+        ])
+        chart_type_layout.addWidget(self.chart_type_selector)
+        chart_controls_layout.addLayout(chart_type_layout)
+        
+        # Data category selection
+        data_layout = QHBoxLayout()
+        data_layout.addWidget(QLabel("Data to Show:"))
+        self.chart_data_category = QComboBox()
+        self.chart_data_category.addItems([
             "Player Totals",
             "Chest Totals",
             "Source Totals",
             "Date Totals"
         ])
-        chart_controls_layout.addWidget(self.analysis_chart_selector, 0, 1)
+        data_layout.addWidget(self.chart_data_category)
+        chart_controls_layout.addLayout(data_layout)
         
-        # Data column selection
-        chart_controls_layout.addWidget(QLabel("Data Column:"), 0, 2)
-        self.chart_data_column = QComboBox()
-        self.chart_data_column.addItems(["SCORE", "CHEST_COUNT", "TOTAL_SCORE"])
-        chart_controls_layout.addWidget(self.chart_data_column, 0, 3)
+        # Sorting group
+        sorting_group = QGroupBox("Sorting Options")
+        sorting_layout = QVBoxLayout()
         
-        # Sort options
-        chart_controls_layout.addWidget(QLabel("Sort By:"), 1, 0)
+        # Sort column
+        sort_column_layout = QHBoxLayout()
+        sort_column_layout.addWidget(QLabel("Sort By:"))
         self.chart_sort_column = QComboBox()
         self.chart_sort_column.addItems(["SCORE", "CHEST_COUNT", "TOTAL_SCORE", "PLAYER", "DATE", "SOURCE", "CHEST"])
-        chart_controls_layout.addWidget(self.chart_sort_column, 1, 1)
+        sort_column_layout.addWidget(self.chart_sort_column)
+        sorting_layout.addLayout(sort_column_layout)
         
-        chart_controls_layout.addWidget(QLabel("Sort Order:"), 1, 2)
+        # Sort order
+        sort_order_layout = QHBoxLayout()
+        sort_order_layout.addWidget(QLabel("Sort Order:"))
         self.chart_sort_order = QComboBox()
         self.chart_sort_order.addItems(["Descending", "Ascending"])
-        chart_controls_layout.addWidget(self.chart_sort_order, 1, 3)
+        sort_order_layout.addWidget(self.chart_sort_order)
+        sorting_layout.addLayout(sort_order_layout)
         
         # Limit results
-        chart_controls_layout.addWidget(QLabel("Limit Results:"), 2, 0)
+        limit_layout = QHBoxLayout()
         self.chart_limit_checkbox = QCheckBox("Show only top")
-        chart_controls_layout.addWidget(self.chart_limit_checkbox, 2, 1)
+        limit_layout.addWidget(self.chart_limit_checkbox)
         
         self.chart_limit_value = QSpinBox()
         self.chart_limit_value.setRange(1, 50)
         self.chart_limit_value.setValue(10)
         self.chart_limit_value.setSuffix(" items")
-        chart_controls_layout.addWidget(self.chart_limit_value, 2, 2)
+        limit_layout.addWidget(self.chart_limit_value)
+        limit_layout.addStretch()
+        sorting_layout.addLayout(limit_layout)
         
-        # Display options
-        chart_controls_layout.addWidget(QLabel("Display Options:"), 3, 0)
+        # Finalize sorting group
+        sorting_group.setLayout(sorting_layout)
+        chart_controls_layout.addWidget(sorting_group)
+        
+        # Display options group
+        display_group = QGroupBox("Display Options")
+        display_layout = QVBoxLayout()
+        
+        # Display checkboxes
         self.chart_show_values = QCheckBox("Show values")
         self.chart_show_values.setChecked(True)
-        chart_controls_layout.addWidget(self.chart_show_values, 3, 1)
+        display_layout.addWidget(self.chart_show_values)
         
         self.chart_show_grid = QCheckBox("Show grid")
         self.chart_show_grid.setChecked(True)
-        chart_controls_layout.addWidget(self.chart_show_grid, 3, 2)
+        display_layout.addWidget(self.chart_show_grid)
+        
+        # Finalize display group
+        display_group.setLayout(display_layout)
+        chart_controls_layout.addWidget(display_group)
         
         # Action buttons
+        action_layout = QVBoxLayout()
+        
         self.apply_chart_options = QPushButton("Apply Options")
-        chart_controls_layout.addWidget(self.apply_chart_options, 4, 0, 1, 2)
+        action_layout.addWidget(self.apply_chart_options)
         
         self.save_chart_button = QPushButton("Save Chart")
-        chart_controls_layout.addWidget(self.save_chart_button, 4, 2, 1, 2)
+        action_layout.addWidget(self.save_chart_button)
+        
+        # Add button layout to main layout
+        chart_controls_layout.addLayout(action_layout)
+        
+        # Add stretch to push controls to the top
+        chart_controls_layout.addStretch(1)
         
         # Set the layout for chart controls group
         chart_controls_group.setLayout(chart_controls_layout)
-        layout.addWidget(chart_controls_group)
+        left_layout.addWidget(chart_controls_group, 1)
+        
+        # Add left panel to splitter
+        charts_splitter.addWidget(left_panel)
+        
+        # Create right panel for chart
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(5, 5, 5, 5)
         
         # Create a matplotlib figure
-        self.chart_figure = Figure(figsize=(10, 6), dpi=100)
+        self.chart_figure = Figure(dpi=100)
         self.chart_canvas = FigureCanvas(self.chart_figure)
         
-        # Set up the canvas to use most of the space
+        # Set up the canvas to use all available space
         self.chart_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        layout.addWidget(self.chart_canvas, 1)  # Add with stretch factor 1 to use available space
+        right_layout.addWidget(self.chart_canvas, 1)
+        
+        # Add right panel to splitter
+        charts_splitter.addWidget(right_panel)
+        
+        # Set splitter sizes (30% controls, 70% chart)
+        charts_splitter.setSizes([300, 700])
+        
+        # Add splitter to main layout
+        layout.addWidget(charts_splitter, 1)
         
         # Connect signals
-        self.analysis_chart_selector.currentIndexChanged.connect(self.update_chart)
+        self.chart_data_category.currentIndexChanged.connect(self.update_chart_data_column)
+        self.chart_data_category.currentIndexChanged.connect(self.update_chart)
+        self.chart_type_selector.currentIndexChanged.connect(self.update_chart)
         self.apply_chart_options.clicked.connect(self.update_chart)
         self.save_chart_button.clicked.connect(self.save_chart)
         
         if self.debug:
             print("Charts tab setup complete")
+            
+    def update_chart_data_column(self):
+        """
+        Update the data column based on the selected data category.
+        This automatically selects the appropriate column for the data category.
+        """
+        data_category = self.chart_data_category.currentText()
+        
+        # Set the default column based on the data category
+        if data_category == "Player Totals":
+            self.chart_data_column.setCurrentText("SCORE")
+        elif data_category == "Chest Totals":
+            self.chart_data_column.setCurrentText("CHEST_COUNT")
+        elif data_category == "Source Totals":
+            self.chart_data_column.setCurrentText("SCORE")
+        elif data_category == "Date Totals":
+            self.chart_data_column.setCurrentText("SCORE")
+            
+        # Also update the sort column to match
+        if self.chart_sort_column.findText(self.chart_data_column.currentText()) != -1:
+            self.chart_sort_column.setCurrentText(self.chart_data_column.currentText())
+        
+        if self.debug:
+            print(f"Set data column to {self.chart_data_column.currentText()} for {data_category}")
 
     def apply_theme(self):
         """Apply the dark theme to the application."""

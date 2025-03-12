@@ -71,13 +71,18 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
   - Dynamically generates visualizations based on data selection
   - Uses Total Battle-inspired color palette with gold and blue tones
 - **Enhanced Chart Customization**:
-  - Data column selection (SCORE, CHEST_COUNT, TOTAL_SCORE)
-  - Sorting options by any column
-  - Limit results to top N items
-  - Show/hide value labels
-  - Show/hide grid lines
-  - Save charts as PNG, JPG, PDF, or SVG
-  - Optimized chart display using maximum available space
+  - Separate chart type selection from data category selection
+  - Chart types include: Bar Chart, Horizontal Bar, Pie Chart, Line Chart
+  - Data categories include: Player Totals, Chest Totals, Source Totals, Date Totals
+  - Intuitive UI with logical control grouping in a side panel layout
+  - Automatic data value selection based on category (e.g., SCORE for Player Totals)
+  - Sorting options by any column with proper ascending/descending logic
+  - Limit results to top N items with proper sorting order application
+  - Show/hide value labels and grid lines
+  - Advanced export options:
+    - Save charts as PNG, JPG, PDF, or SVG
+    - Export underlying data as CSV or Excel for spreadsheet applications
+  - Maximized chart display area with controls moved to a left side panel
 - **Customized Matplotlib integration**: Dark theme compatible charts with gold accents
 - **Multiple chart types**:
   - Bar Charts: For comparing values across categories
@@ -117,6 +122,11 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
 - **Responsive feedback**: Status bar updates and dialog notifications
 - **Error handling**: Graceful error management with user-friendly messages
 - **Cross-platform compatibility**: Windows-specific optimizations
+- **Standardized File Organization**:
+  - Uses 'imports' directory for loading data files
+  - Uses 'exports' directory for saving all generated content
+  - Saves console output to 'log.txt' for troubleshooting
+  - Maintains data integrity with automatic directory creation
 
 ## File Structure
 - `src/total-battle-analyzer.py`: Main application file
