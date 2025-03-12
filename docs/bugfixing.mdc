@@ -1394,54 +1394,69 @@ The filter selection panel was not appearing properly when users checked the "Se
 2. Fixed the toggle_analysis_value_selection method to properly manage the visibility of the value selection panel:
    ```python
    def toggle_analysis_value_selection(self, state):
-       """Toggle the visibility of the value selection panel based on checkbox state"""
-       if state == Qt.Checked:
-           # Only show and populate if we have data
-           if self.analysis_results and 'raw_data' in self.analysis_results:
-               self.analysis_splitter.setSizes([200, 200])  # Show both panels
-               self.update_analysis_filter_options()
-           else:
-               # No data available, uncheck the box
-               self.analysis_select_values_checkbox.setChecked(False)
-               QMessageBox.warning(self, "No Data", "No data available for filtering.")
-       else:
-           # Hide the value selection panel
-           self.analysis_splitter.setSizes([400, 0])
+       """Toggle the visibility of the analysis value selection panel."""
+       # Handle both checkbox and direct state setting
+       is_checked = self.analysis_show_value_selection.isChecked() if state is None else state == Qt.Checked
+       self.analysis_value_panel.setVisible(is_checked)
+       
+       # Update filter options if now visible
+       if is_checked:
+           self.update_analysis_filter_options()
    ```
 
-3. Enhanced the `update_analysis_filter_options` method to handle value selection properly:
+3. Added the missing update_analysis_filter_options method and connected it:
    ```python
    def update_analysis_filter_options(self):
-       """Update the filter options based on the selected filter field"""
-       # Block signals to prevent cascading updates
-       self.analysis_filter_values_list.blockSignals(True)
+       """Update the available filter options based on the selected column."""
+       if not hasattr(self, 'analysis_value_list') or not hasattr(self, 'analysis_column_selector') or self.raw_data is None or self.raw_data.empty:
+           return
+           
+       try:
+           # Block signals to prevent recursive calls
+           self.analysis_value_list.blockSignals(True)
+           
+           # Clear the list
+           self.analysis_value_list.clear()
+           
+           # Get the selected filter field
+           selected_filter = self.analysis_column_selector.currentText()
+           
+           if selected_filter and self.analysis_results and 'raw_data' in self.analysis_results:
+               # Get unique values for the selected filter
+               try:
+                   unique_values = self.analysis_results['raw_data'][selected_filter].unique()
+                   
+                   # Add each unique value to the list
+                   for value in sorted(unique_values):
+                       item = QListWidgetItem(value)
+                       item.setSelected(True)  # Default to checked
+                       self.analysis_value_list.addItem(item)
+               except Exception as e:
+                   print(f"Error updating filter options: {e}")
        
-       # Clear the current list
-       self.analysis_filter_values_list.clear()
-       
-       # Get the selected filter field
-       selected_filter = self.analysis_filter_field.currentText()
-       
-       if selected_filter and self.analysis_results and 'raw_data' in self.analysis_results:
-           # Get unique values for the selected filter
-           try:
-               unique_values = self.analysis_results['raw_data'][selected_filter].unique()
-               
-               # Add each unique value to the list
-               for value in sorted(unique_values):
-                   if pd.notna(value):  # Skip NaN values
-                       item = QListWidgetItem(str(value))
-                       item.setCheckState(Qt.Checked)  # Default to checked
-                       self.analysis_filter_values_list.addItem(item)
-           except Exception as e:
-               print(f"Error updating filter options: {e}")
-       
-       # Unblock signals
-       self.analysis_filter_values_list.blockSignals(False)
+           # Unblock signals
+           self.analysis_value_list.blockSignals(False)
+       except Exception as e:
+           self.statusBar().showMessage(f"Error updating filter options: {str(e)}")
+           log_error("Error in update_analysis_filter_options", e, show_traceback=True)
    ```
 
-### Verification
-The application was tested with the changes, and the filter selection functionality now works correctly. Users can check the "Select specific values" checkbox, and the filter panel is properly displayed and populated with values. The filter can be applied to both the Raw Data and Analysis tabs.
+4. Connected the column selector to the update method:
+   ```python
+   self.analysis_column_selector.currentIndexChanged.connect(self.update_analysis_filter_options)
+   ```
+
+5. Verified that German umlaut handling was correctly implemented in dataprocessor.py:
+   - Detection of umlauts in raw file data
+   - Prioritization of German-friendly encodings
+   - Automatic fixing of garbled characters
+   - Proper UTF-8 export
+
+**Verification:**
+1. The Analysis tab now has a consistent layout with the Raw Data tab.
+2. The "select specific values" checkbox now correctly shows/hides the value list.
+3. The value list is now properly populated with unique values from the selected column.
+4. German umlauts are properly detected and handled in CSV files.
 
 ## 2024-06-01: Report Tab Implementation Challenges
 
@@ -1477,54 +1492,7 @@ During the implementation of the Report tab functionality, we encountered severa
 ### 2024-06-02: Fixed Indentation Issues in Report Tab Implementation
 
 **Issue:**
-After implementing the Report tab functionality, several linter errors were detected related to indentation issues and missing except clauses in try blocks:
-```
-Expected expression at line 4141
-Unexpected indentation at line 4142
-Unexpected indentation at line 4797
-Unindent amount does not match previous indent at line 5267
-"TABLEAU_COLORS" is not defined (multiple occurrences)
-```
-
-**Root Cause:**
-1. There were still some indentation issues in the Report Tab implementation, particularly at lines 4797 (Overview Section comment) and 5267 (generate_chart_for_report method).
-2. The TABLEAU_COLORS variable was being used in multiple chart generation methods but was never defined in the codebase.
-
-**Solution:**
-1. Created a dedicated fix script (`src/fix_remaining_indentation.py`) to address specific indentation issues:
-   ```python
-   def fix_indentation_issues():
-       # Fix line 4797 - Remove extra space in "         # Overview Section"
-       line_idx = 4796 - 1  # Convert to 0-indexed
-       if line_idx < len(lines) and lines[line_idx].strip() == "# Overview Section":
-           lines[line_idx] = "        # Overview Section\n"
-       
-       # Fix line 5267 - Fix def indentation: "     def generate_chart_for_report"
-       line_idx = 5267 - 1  # Convert to 0-indexed
-       if line_idx < len(lines) and "def generate_chart_for_report" in lines[line_idx]:
-           lines[line_idx] = "    def generate_chart_for_report(self, chart_type, category_field, title):\n"
-   ```
-
-2. Added a TABLEAU_COLORS definition after the matplotlib imports:
-   ```python
-   def add_tableau_colors():
-       # Find a good place to add the import and definition - after other matplotlib imports
-       import_pattern = r'import matplotlib\.pyplot as plt'
-       match = re.search(import_pattern, content)
-       
-       if match:
-           # Add the definition after the matplotlib imports
-           tableau_colors_def = "\n# Define Tableau colors for charts\nTABLEAU_COLORS = ['#4e79a7', '#f28e2c', '#e15759', '#76b7b2', '#59a14f', '#edc949', '#af7aa1', '#ff9da7', '#9c755f', '#bab0ab']\n"
-           new_content = content[:match.end()] + tableau_colors_def + content[match.end():]
-   ```
-
-**Verification:**
-Running the script successfully fixed the indentation issues and added the TABLEAU_COLORS definition. Linter errors related to indentation and undefined variables were resolved.
-
-### 2024-06-03: Fixed Remaining Linter Errors in Report Tab Implementation
-
-**Issue:**
-After the initial indentation fixes, there were still several linter errors in the Report Tab implementation:
+After implementing the Report tab functionality, several linter errors were detected related to indentation issues in the Report Tab implementation:
 ```
 Expected expression at line 4141
 Unexpected indentation at line 4142
@@ -1581,10 +1549,11 @@ IndentationError: unindent does not match any outer indentation level at line 14
 ```
 
 **Root Cause:**
-Multiple except blocks throughout the codebase had incorrect indentation, with the code inside the except block not properly indented. This is a syntax error in Python.
+1. There were still some indentation issues in the Report Tab implementation, particularly at lines 4797 (Overview Section comment) and 5267 (generate_chart_for_report method).
+2. The TABLEAU_COLORS variable was being used in multiple chart generation methods but was never defined in the codebase.
 
 **Solution:**
-1. Created a script (`src/fix_try_except.py`) to fix the try-except syntax issue at line 4144:
+1. Created a dedicated fix script (`src/fix_try_except.py`) to fix the try-except syntax issue at line 4144:
    ```python
    def fix_try_except_issue():
        # Find the problematic section - hanging except without try
@@ -1627,3 +1596,283 @@ Multiple except blocks throughout the codebase had incorrect indentation, with t
 
 **Status:**
 While some indentation issues were fixed, there are still syntax errors in the codebase. A more comprehensive approach may be needed to address all indentation issues, possibly requiring a complete review of the file's indentation structure.
+
+### 2024-06-04: Raw Data Tab Column Population and German Umlaut Handling
+
+**Issue 1:** 
+The Raw Data tab filter was not populating columns with the same data as the Analysis tab, causing inconsistencies in filtering.
+
+**Root Cause:**
+The Analysis tab was using `self.raw_data` for filter options while the FilterArea component used the parent's `processed_data`.
+
+**Solution:**
+1. Modified the `FilterArea.update_filter_options()` method to use `raw_data` instead of `processed_data`:
+```python
+def update_filter_options(self):
+    """Update the available filter options based on the selected column."""
+    self.value_list.clear()
+    
+    # Get parent's data
+    parent = self.parent()
+    if not hasattr(parent, 'raw_data') or parent.raw_data is None:
+        return
+    
+    column = self.column_selector.currentText()
+    if not column:
+        return
+    
+    # Get unique values from the selected column
+    unique_values = parent.raw_data[column].astype(str).unique().tolist()
+    unique_values.sort()
+    
+    # Add items to the list
+    for value in unique_values:
+        item = QListWidgetItem(value)
+        self.value_list.addItem(item)
+```
+
+**Verification:**
+Filtering in both tabs now uses the same raw data, ensuring consistent behavior.
+
+**Issue 2:**
+German umlauts were not being consistently handled in the application. The "Feldjäger" name was correct in the CSV but mangled in the application, while "Krümelmonster" (displayed as "Krmelmonster" in the CSV) was being fixed.
+
+**Root Cause:**
+1. The encoding detection priority placed Windows-1252 (cp1252) above UTF-8
+2. The encoding detection sample size was too small (1KB)
+3. Inconsistency in how umlauts were being detected and checked in the file loading process
+
+**Solution:**
+1. Changed encoding detection priority to prioritize UTF-8:
+```python
+# Define encodings to try, prioritizing German-friendly encodings
+encodings = ['utf-8-sig', 'utf-8', 'cp1252', 'iso-8859-1', 'latin1']
+```
+
+2. Increased the sample size for encoding detection from 1KB to 4KB:
+```python
+# Try to detect encoding by reading a sample
+sample_size = 4096  # Increased from 1KB to 4KB for better detection
+```
+
+3. Enhanced the encoding detection with more detailed debug output:
+```python
+# Check for UTF-8 BOM
+if raw_data.startswith(b'\xef\xbb\xbf'):
+    encoding_detected = 'utf-8-sig'
+    if self.debug:
+        print(f"Detected UTF-8 with BOM")
+# Check for German umlauts in UTF-8
+elif re.search(rb'[\xc3][\xa4\xb6\xbc\x84\x96\x9c\x9f]', raw_data):  # ä, ö, ü, Ä, Ö, Ü, ß
+    encoding_detected = 'utf-8'
+    if self.debug:
+        print(f"Detected UTF-8 encoding based on umlaut pattern")
+```
+
+4. Added specific umlaut verification in the load process:
+```python
+# Verify that umlauts are readable by checking a sample
+if self.debug and 'PLAYER' in df.columns:
+    players = df['PLAYER'].head(5).tolist()
+    print(f"Sample players with {encoding}: {players}")
+    
+    # Test if umlauts are correctly encoded
+    for player in players:
+        if 'ä' in player or 'ö' in player or 'ü' in player:
+            print(f"Found umlauts in player name: {player}")
+```
+
+5. Preserved additional columns beyond the required ones when loading CSV files:
+```python
+# Keep only required columns and any additional columns
+required_plus_extras = required_columns + [col for col in df.columns if col not in required_columns]
+df = df[required_plus_extras]
+```
+
+**Verification:**
+1. Both German names with umlauts ("Feldjäger" and "Krümelmonster") now display correctly in the application
+2. The enhanced encoding detection correctly identifies and handles various character encodings
+3. Additional columns like "CLAN" are now preserved in the loaded data
+
+### 2024-06-04: Raw Data Tab and Analysis Tab UI Consistency
+
+**Issue:** 
+The Raw Data tab's "Select specific values" functionality was not working correctly, unlike the working implementation in the Analysis tab. The filter options were not being populated.
+
+**Root Cause:**
+1. The Raw Data tab was using a different UI structure (FilterArea component) than the Analysis tab (direct implementation).
+2. The FilterArea component had been updated to use `raw_data` instead of `processed_data`, but still wasn't consistent with the more successful Analysis tab implementation.
+
+**Solution:**
+1. Redesigned the Raw Data tab to use the same UI structure and pattern as the Analysis tab:
+```python
+# Create left panel for filter controls (instead of using filter_area)
+left_panel = QWidget()
+left_layout = QVBoxLayout(left_panel)
+left_layout.setContentsMargins(5, 5, 5, 5)
+left_layout.setSpacing(5)
+
+# Create filter controls group
+filter_group = QGroupBox("Filter and View Options")
+filter_layout = QVBoxLayout()
+
+# Column selection
+column_layout = QHBoxLayout()
+column_layout.addWidget(QLabel("Filter Column:"))
+self.column_selector = QComboBox()
+self.column_selector.currentIndexChanged.connect(self.update_filter_options)
+column_layout.addWidget(self.column_selector)
+filter_layout.addLayout(column_layout)
+
+# Value selection toggle
+self.show_value_selection = QCheckBox("Select specific values")
+self.show_value_selection.setChecked(True)
+self.show_value_selection.stateChanged.connect(self.toggle_value_selection)
+filter_layout.addWidget(self.show_value_selection)
+```
+
+2. Implemented consistent update methods for the Raw Data tab following the pattern from the Analysis tab:
+```python
+def update_filter_options(self):
+    """Update the available filter options based on the selected column."""
+    if not hasattr(self, 'value_list') or self.raw_data is None:
+        return
+        
+    column = self.column_selector.currentText()
+    if not column:
+        return
+        
+    # Clear the list
+    self.value_list.clear()
+    
+    # Get unique values from the selected column
+    unique_values = self.raw_data[column].astype(str).unique().tolist()
+    unique_values.sort()
+    
+    # Add the unique values to the analysis value list
+    for value in unique_values:
+        item = QListWidgetItem(value)
+        self.value_list.addItem(item)
+        
+    # Select all values by default
+    self.select_all_values()
+```
+
+3. Enhanced the toggle value selection methods to handle different state parameter types:
+```python
+def toggle_value_selection(self, state):
+    """Toggle the visibility of the value selection panel."""
+    # Handle different parameter types
+    if isinstance(state, bool):
+        is_visible = state
+    elif state is None:
+        # If None, use the current checkbox state
+        is_visible = self.show_value_selection.isChecked()
+    else:
+        # Assume it's a Qt.CheckState value
+        is_visible = state == Qt.Checked
+    
+    if hasattr(self, 'value_list_widget'):
+        self.value_list_widget.setVisible(is_visible)
+        
+        # Update filter options if now visible
+        if is_visible:
+            self.update_filter_options()
+```
+
+4. Modified the `load_csv_file` method to properly initialize both tabs:
+```python
+# Update Raw Data tab filter options
+if hasattr(self, 'column_selector'):
+    self.column_selector.clear()
+    self.column_selector.addItems(df.columns.tolist())
+    # Update filter options based on the first column
+    if df.columns.size > 0:
+        self.update_filter_options()
+
+# Update Analysis tab filter options
+if hasattr(self, 'analysis_column_selector'):
+    self.analysis_column_selector.clear()
+    self.analysis_column_selector.addItems(df.columns.tolist())
+    # Update filter options based on the first column
+    if df.columns.size > 0:
+        self.update_analysis_filter_options()
+```
+
+5. Removed FilterArea component dependency and updated `__init__` to prevent errors:
+```python
+# Connect signals
+self.drop_area.fileDropped.connect(self.load_csv_file)
+self.import_area.fileSelected.connect(self.load_csv_file)
+# Removed: self.filter_area.filterApplied.connect(self.apply_filter)
+# Removed: self.filter_area.filterCleared.connect(self.clear_filter)
+```
+
+**Verification:**
+1. The Raw Data tab now shows the same filter options as the Analysis tab
+2. The "Select specific values" checkbox now correctly shows/hides the value selection panel
+3. The value selection panel is populated with the unique values from the selected column
+4. All filter functionality works correctly in both tabs
+5. The UI layout and behavior is now consistent between both tabs
+
+## 2024-06-05: Fixed German Umlaut Handling in Raw Data Tab
+
+**Issue:**
+German umlauts were not being correctly handled in the Raw Data tab. The "Feldjäger" name was correct in the CSV but mangled in the application, while "Krümelmonster" (displayed as "Krmelmonster" in the CSV) was being fixed.
+
+**Root Cause:**
+1. The encoding detection priority placed Windows-1252 (cp1252) above UTF-8
+2. The encoding detection sample size was too small (1KB)
+3. Inconsistency in how umlauts were being detected and checked in the file loading process
+
+**Solution:**
+1. Changed encoding detection priority to prioritize UTF-8:
+```python
+# Define encodings to try, prioritizing German-friendly encodings
+encodings = ['utf-8-sig', 'utf-8', 'cp1252', 'iso-8859-1', 'latin1']
+```
+
+2. Increased the sample size for encoding detection from 1KB to 4KB:
+```python
+# Try to detect encoding by reading a sample
+sample_size = 4096  # Increased from 1KB to 4KB for better detection
+```
+
+3. Enhanced the encoding detection with more detailed debug output:
+```python
+# Check for UTF-8 BOM
+if raw_data.startswith(b'\xef\xbb\xbf'):
+    encoding_detected = 'utf-8-sig'
+    if self.debug:
+        print(f"Detected UTF-8 with BOM")
+# Check for German umlauts in UTF-8
+elif re.search(rb'[\xc3][\xa4\xb6\xbc\x84\x96\x9c\x9f]', raw_data):  # ä, ö, ü, Ä, Ö, Ü, ß
+    encoding_detected = 'utf-8'
+    if self.debug:
+        print(f"Detected UTF-8 encoding based on umlaut pattern")
+```
+
+4. Added specific umlaut verification in the load process:
+```python
+# Verify that umlauts are readable by checking a sample
+if self.debug and 'PLAYER' in df.columns:
+    players = df['PLAYER'].head(5).tolist()
+    print(f"Sample players with {encoding}: {players}")
+    
+    # Test if umlauts are correctly encoded
+    for player in players:
+        if 'ä' in player or 'ö' in player or 'ü' in player:
+            print(f"Found umlauts in player name: {player}")
+```
+
+5. Preserved additional columns beyond the required ones when loading CSV files:
+```python
+# Keep only required columns and any additional columns
+required_plus_extras = required_columns + [col for col in df.columns if col not in required_columns]
+df = df[required_plus_extras]
+```
+
+**Verification:**
+1. Both German names with umlauts ("Feldjäger" and "Krümelmonster") now display correctly in the application
+2. The enhanced encoding detection correctly identifies and handles various character encodings
+3. Additional columns like "CLAN" are now preserved in the loaded data

@@ -93,8 +93,6 @@ class MainWindow(QMainWindow):
         # Connect signals
         self.drop_area.fileDropped.connect(self.load_csv_file)
         self.import_area.fileSelected.connect(self.load_csv_file)
-        self.filter_area.filterApplied.connect(self.apply_filter)
-        self.filter_area.filterCleared.connect(self.clear_filter)
         
         if self.debug:
             print("MainWindow initialized")
@@ -112,21 +110,29 @@ class MainWindow(QMainWindow):
     def init_tab_states(self):
         """Initialize the states of all tabs."""
         # This method is called after UI setup to initialize any tab-specific states or data
-        # For example, populating combo boxes, setting up default values, etc.
         
         # Initialize Raw Data tab
         if hasattr(self, 'column_selector'):
             self.column_selector.clear()
             
+        # Make sure value selection panel is properly shown/hidden
+        if hasattr(self, 'show_value_selection') and hasattr(self, 'value_list_widget'):
+            is_checked = self.show_value_selection.isChecked()
+            self.value_list_widget.setVisible(is_checked)
+            
         # Initialize Analysis tab
         if hasattr(self, 'analysis_column_selector'):
             self.analysis_column_selector.clear()
             
+        # Make sure analysis value panel is properly shown/hidden
+        if hasattr(self, 'analysis_show_value_selection') and hasattr(self, 'analysis_value_panel'):
+            is_checked = self.analysis_show_value_selection.isChecked()
+            self.analysis_value_panel.setVisible(is_checked)
+            
         # Initialize Charts tab
         if hasattr(self, 'chart_type_selector') and hasattr(self, 'chart_data_selector'):
             # Set default chart type and data
-            self.chart_type_selector.setCurrentIndex(0)
-            self.chart_data_selector.setCurrentIndex(0)
+            self.chart_type_combo.setCurrentIndex(0)
             
         # Initialize Reports tab
         if hasattr(self, 'report_type_selector'):
@@ -139,8 +145,12 @@ class MainWindow(QMainWindow):
         """
         Load data from a CSV file.
         
+        This method attempts to load a CSV file with various encodings and separators,
+        handling potential errors gracefully. It updates the UI components with the
+        loaded data and enables relevant functionality.
+        
         Args:
-            filepath (str): Path to the CSV file.
+            filepath (str): Path to the CSV file to load
         """
         try:
             # Store the current file path
@@ -151,10 +161,10 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Loading {os.path.basename(filepath)}...")
             
             # Define encodings to try, prioritizing German-friendly encodings
-            encodings = ['cp1252', 'iso-8859-1', 'latin1', 'utf-8-sig', 'utf-8']
+            encodings = ['utf-8-sig', 'utf-8', 'cp1252', 'iso-8859-1', 'latin1']
             
             # Try to detect encoding by reading a sample
-            sample_size = 1024  # Read first 1KB to detect encoding
+            sample_size = 4096  # Increased from 1KB to 4KB for better detection
             encoding_detected = None
             
             try:
@@ -164,12 +174,23 @@ class MainWindow(QMainWindow):
                 # Check for UTF-8 BOM
                 if raw_data.startswith(b'\xef\xbb\xbf'):
                     encoding_detected = 'utf-8-sig'
+                    if self.debug:
+                        print(f"Detected UTF-8 with BOM")
                 # Check for German umlauts in UTF-8
                 elif re.search(rb'[\xc3][\xa4\xb6\xbc\x84\x96\x9c\x9f]', raw_data):  # ä, ö, ü, Ä, Ö, Ü, ß
                     encoding_detected = 'utf-8'
+                    if self.debug:
+                        print(f"Detected UTF-8 encoding based on umlaut pattern")
                 # Check for German umlauts in ISO/Windows encodings
                 elif re.search(rb'[\xe4\xf6\xfc\xc4\xd6\xdc\xdf]', raw_data):  # ä, ö, ü, Ä, Ö, Ü, ß
                     encoding_detected = 'cp1252'
+                    if self.debug:
+                        print(f"Detected Windows-1252 encoding based on umlaut pattern")
+                    
+                if self.debug:
+                    print(f"Raw data sample: {raw_data[:100]}")
+                    if encoding_detected:
+                        print(f"Detected encoding: {encoding_detected} based on content analysis")
             except Exception as e:
                 if self.debug:
                     print(f"Error during encoding detection: {e}")
@@ -179,7 +200,7 @@ class MainWindow(QMainWindow):
                 encodings.remove(encoding_detected)
                 encodings.insert(0, encoding_detected)
                 if self.debug:
-                    print(f"Detected encoding: {encoding_detected}")
+                    print(f"Trying detected encoding first: {encoding_detected}")
             
             # Try each encoding
             df = None
@@ -194,9 +215,16 @@ class MainWindow(QMainWindow):
                     df = pd.read_csv(filepath, encoding=encoding, parse_dates=['DATE'], dayfirst=True)
                     
                     # Verify that umlauts are readable by checking a sample
-                    sample_text = df.to_string().encode(encoding).decode(encoding)
-                    if self.debug:
-                        print(f"Successfully loaded with {encoding}")
+                    if self.debug and 'PLAYER' in df.columns:
+                        players = df['PLAYER'].head(5).tolist()
+                        print(f"Sample players with {encoding}: {players}")
+                        
+                        # Test if umlauts are correctly encoded
+                        for player in players:
+                            if 'ä' in player or 'ö' in player or 'ü' in player:
+                                print(f"Found umlauts in player name: {player}")
+                    
+                    # If encoding works, break the loop
                     break
                     
                 except UnicodeDecodeError as e:
@@ -239,19 +267,53 @@ class MainWindow(QMainWindow):
             df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
             df = df.dropna(subset=['DATE'])
             
-            # Keep only required columns
-            df = df[required_columns]
+            # Keep only required columns and any additional columns
+            required_plus_extras = required_columns + [col for col in df.columns if col not in required_columns]
+            df = df[required_plus_extras]
             
             # Store the data
             self.raw_data = df
             self.processed_data = df.copy()
             
-            # Update filter area
-            self.filter_area.update_columns(df.columns.tolist())
+            # Update Raw Data tab filter options
+            if hasattr(self, 'column_selector'):
+                if self.debug:
+                    print("Populating column_selector with columns:", df.columns.tolist())
+                self.column_selector.clear()
+                self.column_selector.addItems(df.columns.tolist())
+                # Update filter options based on the first column
+                if df.columns.size > 0:
+                    self.update_filter_options()
             
-            # Create and set table model
+            # Update Analysis tab filter options
+            if hasattr(self, 'analysis_column_selector'):
+                if self.debug:
+                    print("Populating analysis_column_selector with columns:", df.columns.tolist())
+                self.analysis_column_selector.clear()
+                self.analysis_column_selector.addItems(df.columns.tolist())
+                # Update filter options based on the first column
+                if df.columns.size > 0:
+                    self.update_analysis_filter_options()
+            
+            # Update visibility of filter panels
+            if hasattr(self, 'show_value_selection'):
+                is_checked = self.show_value_selection.isChecked()
+                if self.debug:
+                    print(f"Setting value selection visibility: {is_checked}")
+                self.toggle_value_selection(is_checked)
+            
+            if hasattr(self, 'analysis_show_value_selection'):
+                is_checked = self.analysis_show_value_selection.isChecked()
+                if self.debug:
+                    print(f"Setting analysis value selection visibility: {is_checked}")
+                self.toggle_analysis_value_selection(is_checked)
+            
+            # Create and set table model for raw data tab
             model = CustomTableModel(df)
             self.raw_data_table.setModel(model)
+            
+            # Update analysis view
+            self.update_analysis_view()
             
             # Update chart
             self.update_chart()
@@ -278,7 +340,7 @@ class MainWindow(QMainWindow):
             error_msg = f"Failed to load CSV file: {str(e)}"
             if self.debug:
                 print(error_msg)
-                traceback.print_exc()
+            traceback.print_exc()
             self.file_label.setText("No file loaded")
             self.statusBar().showMessage(error_msg)
             QMessageBox.critical(self, "Error", error_msg)
@@ -585,70 +647,72 @@ class MainWindow(QMainWindow):
 
     def filter_raw_data(self):
         """Apply filters to the raw data table."""
-        if self.processed_data is None:
+        if self.raw_data is None:
             return
             
-        filtered_data = self.processed_data.copy()
+        filtered_data = self.raw_data.copy()
         
-        # Get the current filter state
-        column_name = self.column_selector.currentText()
-        date_filter_enabled = self.date_filter_enabled.isChecked()
-        value_selection_enabled = self.show_value_selection.isChecked()
-        
-        # If value selection is enabled, use selected items
-        if value_selection_enabled:
-            selected_items = self.value_list.selectedItems()
-            if selected_items:
-                selected_values = [item.text() for item in selected_items]
-                filtered_data = filtered_data[filtered_data[column_name].astype(str).isin(selected_values)]
-                
-                # Show status message about column filtering
-                status_message = f"Filtered by {column_name}: {len(selected_values)} values selected"
-            else:
-                # No column filter applied (no values selected)
-                status_message = "Warning: No values selected for filtering - no results"
-                QMessageBox.warning(self, "Filter Warning", "No values are selected. Please select at least one value.")
-                return
-        else:
-            # Apply column filter if text field has a value
-            if column_name and self.filter_value.text():
-                value = self.filter_value.text()
-                
-                if value:
-                    # Check if we need to use string contains or exact match
-                    if 'object' in str(filtered_data[column_name].dtype):
-                        # Case-insensitive string contains
-                        filtered_data = filtered_data[filtered_data[column_name].str.contains(value, case=False, na=False)]
-                    else:
-                        # Exact match for non-string columns
-                        try:
-                            filtered_data = filtered_data[filtered_data[column_name] == float(value)]
-                        except ValueError:
-                            # If not a valid number, try as string
-                            filtered_data = filtered_data[filtered_data[column_name].astype(str) == value]
+        try:
+            # Get the current filter state
+            column_name = self.column_selector.currentText()
+            date_filter_enabled = self.date_filter_enabled.isChecked()
+            value_selection_enabled = self.show_value_selection.isChecked()
+            
+            # If value selection is enabled, use selected items
+            if value_selection_enabled:
+                selected_items = self.value_list.selectedItems()
+                if selected_items:
+                    selected_values = [item.text() for item in selected_items]
+                    filtered_data = filtered_data[filtered_data[column_name].astype(str).isin(selected_values)]
                     
-                    status_message = f"Filtered by {column_name} containing '{value}'"
+                    # Show status message about column filtering
+                    status_message = f"Filtered by {column_name}: {len(selected_values)} values selected"
+                else:
+                    # No column filter applied (no values selected)
+                    status_message = "Warning: No values selected for filtering - no results"
+                    QMessageBox.warning(self, "Filter Warning", "No values are selected. Please select at least one value.")
+                    return
             else:
                 # Value selection is not enabled - using all values
                 status_message = f"Using all values for {column_name}"
-        
-        # Apply date filter if enabled
-        if date_filter_enabled and 'DATE' in filtered_data.columns:
-            start_date = self.start_date_edit.date().toString("yyyy-MM-dd")
-            end_date = self.end_date_edit.date().toString("yyyy-MM-dd")
             
-            # Filter by date range
-            filtered_data = filtered_data[(filtered_data['DATE'] >= start_date) & 
-                                         (filtered_data['DATE'] <= end_date)]
+            # Apply date filter if enabled
+            if date_filter_enabled and 'DATE' in filtered_data.columns:
+                start_date = self.start_date_edit.date().toString("yyyy-MM-dd")
+                end_date = self.end_date_edit.date().toString("yyyy-MM-dd")
+                
+                # Convert to datetime for filtering
+                start_date_dt = pd.to_datetime(start_date)
+                end_date_dt = pd.to_datetime(end_date)
+                
+                # Make sure DATE is datetime
+                filtered_data['DATE'] = pd.to_datetime(filtered_data['DATE'])
+                
+                # Filter by date range
+                filtered_data = filtered_data[(filtered_data['DATE'] >= start_date_dt) & 
+                                             (filtered_data['DATE'] <= end_date_dt)]
+                
+                status_message += f", date range: {start_date} to {end_date}"
             
-            status_message += f", date range: {start_date} to {end_date}"
-        
-        # Update the table with filtered data
-        model = CustomTableModel(filtered_data)
-        self.raw_data_table.setModel(model)
-        
-        # Update status
-        self.statusBar().showMessage(f"{status_message} - {len(filtered_data)} records")
+            # Update the table with filtered data
+            model = CustomTableModel(filtered_data)
+            self.raw_data_table.setModel(model)
+            
+            # Store as processed data
+            self.processed_data = filtered_data
+            
+            # Update status
+            self.statusBar().showMessage(f"{status_message} - {len(filtered_data)} records")
+            
+        except Exception as e:
+            error_msg = f"Error filtering data: {str(e)}"
+            self.statusBar().showMessage(error_msg)
+            
+            if self.debug:
+                print(error_msg)
+                traceback.print_exc()
+            
+            QMessageBox.warning(self, "Filter Error", error_msg)
 
     def clear_filters(self):
         """Clear all filters and reset the raw data table."""
@@ -671,29 +735,56 @@ class MainWindow(QMainWindow):
 
     def toggle_value_selection(self, state):
         """Toggle the visibility of the value selection panel."""
+        # Handle different parameter types
+        if isinstance(state, bool):
+            is_visible = state
+        elif state is None:
+            # If None, use the current checkbox state
+            is_visible = self.show_value_selection.isChecked()
+        else:
+            # Assume it's a Qt.CheckState value
+            is_visible = state == Qt.Checked
+        
+        if self.debug:
+            print(f"Toggle value selection: state={state}, is_visible={is_visible}")
+        
+        # Set visibility
         if hasattr(self, 'value_list_widget'):
-            self.value_list_widget.setVisible(state == Qt.Checked)
-            self.update_filter_options()
-
+            self.value_list_widget.setVisible(is_visible)
+            
+            # Update filter options if now visible
+            if is_visible:
+                if self.debug:
+                    print("Calling update_filter_options")
+                self.update_filter_options()
+    
     def update_filter_options(self):
         """Update the available filter options based on the selected column."""
-        if not hasattr(self, 'value_list') or self.processed_data is None:
+        if not hasattr(self, 'value_list') or self.raw_data is None:
             return
             
         column = self.column_selector.currentText()
         if not column:
             return
             
+        # Clear the list
+        self.value_list.clear()
+        
         # Get unique values from the selected column
-        unique_values = self.processed_data[column].astype(str).unique().tolist()
+        unique_values = self.raw_data[column].astype(str).unique().tolist()
         unique_values.sort()
         
-        # Update the value list
-        self.value_list.clear()
+        # Add the unique values to the analysis value list
         for value in unique_values:
             item = QListWidgetItem(value)
             self.value_list.addItem(item)
-
+            
+        # Select all values by default
+        self.select_all_values()
+        
+        if self.debug:
+            print(f"Added {len(unique_values)} unique values to value_list for column {column}")
+    
     def analyze_data(self):
         """Analyze the processed data and prepare it for the analysis tab."""
         if self.processed_data is None:
@@ -820,12 +911,31 @@ class MainWindow(QMainWindow):
         # Update status
         self.statusBar().showMessage("Analysis filters reset")
 
-    def toggle_analysis_value_selection(self):
-        """Toggle the visibility of the analysis value selection panel."""
-        if self.analysis_show_value_selection.isChecked():
-            self.analysis_value_panel.show()
+    def toggle_analysis_value_selection(self, state):
+        """Toggle the visibility of the analysis value selection panel.
+        
+        Args:
+            state: Can be Qt.Checked/Qt.Unchecked or a boolean True/False
+        """
+        # Handle different parameter types
+        if isinstance(state, bool):
+            is_visible = state
+        elif state is None:
+            # If None, use the current checkbox state
+            is_visible = self.analysis_show_value_selection.isChecked()
         else:
-            self.analysis_value_panel.hide()
+            # Assume it's a Qt.CheckState value
+            is_visible = state == Qt.Checked
+        
+        print(f"Toggle analysis value selection: state={state}, is_visible={is_visible}")
+        
+        # Set visibility
+        self.analysis_value_panel.setVisible(is_visible)
+        
+        # Update filter options if now visible
+        if is_visible:
+            print("Calling update_analysis_filter_options")
+            self.update_analysis_filter_options()
 
     def select_all_analysis_values(self):
         """Select all values in the analysis value list."""
@@ -834,8 +944,9 @@ class MainWindow(QMainWindow):
 
     def deselect_all_analysis_values(self):
         """Deselect all values in the analysis value list."""
-        for i in range(self.analysis_value_list.count()):
-            self.analysis_value_list.item(i).setSelected(False)
+        if hasattr(self, 'analysis_value_list'):
+            for i in range(self.analysis_value_list.count()):
+                self.analysis_value_list.item(i).setSelected(False)
 
     def update_chart_style(self, style):
         """Update the chart style and redraw the current chart."""
@@ -1132,12 +1243,12 @@ class MainWindow(QMainWindow):
 
     def export_analysis_data(self):
         """Export the analysis data to a CSV file."""
-        if self.analysis_table.model() is None:
+        if self.analysis_view.model() is None:
             self.statusBar().showMessage("No analysis data to export")
             return
             
         # Get data from the model
-        model = self.analysis_table.model()
+        model = self.analysis_view.model()
         df = model.dataframe
         
         # Ask for file name
@@ -1333,12 +1444,6 @@ class MainWindow(QMainWindow):
             for i in range(self.value_list.count()):
                 self.value_list.item(i).setSelected(False)
             
-    def toggle_value_selection(self, state):
-        """Toggle the visibility of the value selection panel."""
-        if hasattr(self, 'value_list_widget'):
-            self.value_list_widget.setVisible(state == Qt.Checked)
-            self.update_filter_options()
-            
     def update_filter_from_selection(self):
         """Update the filter based on the selected values in the value list."""
         # Implement the filtering logic based on selected values
@@ -1351,16 +1456,27 @@ class MainWindow(QMainWindow):
 
     def reset_analysis_filter(self):
         """Reset analysis filters."""
-        # Reset analysis filter fields
-        pass
-
-    def toggle_analysis_value_selection(self):
-        """Toggle the visibility of the analysis value selection panel."""
-        if hasattr(self, 'analysis_show_value_selection') and hasattr(self, 'analysis_value_panel'):
-            if self.analysis_show_value_selection.isChecked():
-                self.analysis_value_panel.show()
-            else:
-                self.analysis_value_panel.hide()
+        # Reset date filter to last 30 days
+        today = QDate.currentDate()
+        thirty_days_ago = today.addDays(-30)
+        self.analysis_start_date_edit.setDate(thirty_days_ago)
+        self.analysis_end_date_edit.setDate(today)
+        
+        # Uncheck date filter if it's checked
+        if self.analysis_date_filter_enabled.isChecked():
+            self.analysis_date_filter_enabled.setChecked(False)
+        
+        # If value selection is visible, select all values
+        if self.analysis_show_value_selection.isChecked():
+            self.select_all_analysis_values()
+        
+        # Reprocess the data with no filters
+        if self.raw_data is not None and not self.raw_data.empty:
+            # Update the view with unfiltered data
+            self.update_analysis_view()
+        
+        # Update status
+        self.statusBar().showMessage("Analysis filters reset")
 
     def select_all_analysis_values(self):
         """Select all values in the analysis value list."""
@@ -1389,6 +1505,43 @@ class MainWindow(QMainWindow):
         except Exception as e:
             self.statusBar().showMessage(f"Error updating chart style: {str(e)}")
             log_error("Error updating chart style", e, show_traceback=True)
+
+    def update_analysis_filter_options(self):
+        """
+        Update the analysis filter options based on the selected column.
+        
+        This method clears the analysis value list and populates it with
+        unique values from the selected column. It also updates the analysis
+        view based on the selected options.
+        """
+        if self.debug:
+            print("Updating analysis filter options...")
+        
+        # Get the selected column
+        column = self.analysis_column_selector.currentText()
+        if not column or self.raw_data is None:
+            return
+        
+        # Clear the analysis value list
+        self.analysis_value_list.clear()
+        if self.debug:
+            print(f"Cleared analysis_value_list")
+        
+        # Get unique values from the selected column
+        unique_values = self.raw_data[column].unique()
+        if self.debug:
+            print(f"Selected column: {column}")
+            print(f"Found {len(unique_values)} unique values")
+        
+        # Add the unique values to the analysis value list
+        for value in unique_values:
+            self.analysis_value_list.addItem(str(value))
+        
+        if self.debug:
+            print(f"Added {len(unique_values)} unique values to analysis_value_list")
+        
+        # Update the analysis view
+        self.update_analysis_view()
 
     def _setup_ui(self):
         """Set up the UI components with proper styling"""
@@ -1438,9 +1591,94 @@ class MainWindow(QMainWindow):
         # Create horizontal splitter for filter area and table
         raw_data_splitter = QSplitter(Qt.Horizontal)
         
-        # Create filter area
-        self.filter_area = FilterArea(self)
-        raw_data_splitter.addWidget(self.filter_area)
+        # Create left panel for filter controls (instead of using filter_area)
+        left_panel = QWidget()
+        left_layout = QVBoxLayout(left_panel)
+        left_layout.setContentsMargins(5, 5, 5, 5)
+        left_layout.setSpacing(5)
+        
+        # Create filter controls group
+        filter_group = QGroupBox("Filter and View Options")
+        filter_layout = QVBoxLayout()
+        
+        # Column selection
+        column_layout = QHBoxLayout()
+        column_layout.addWidget(QLabel("Filter Column:"))
+        self.column_selector = QComboBox()
+        self.column_selector.currentIndexChanged.connect(self.update_filter_options)
+        column_layout.addWidget(self.column_selector)
+        filter_layout.addLayout(column_layout)
+        
+        # Value selection toggle
+        self.show_value_selection = QCheckBox("Select specific values")
+        self.show_value_selection.setChecked(True)
+        self.show_value_selection.stateChanged.connect(self.toggle_value_selection)
+        filter_layout.addWidget(self.show_value_selection)
+        
+        # Value selection area
+        self.value_list_widget = QWidget()
+        value_list_layout = QVBoxLayout(self.value_list_widget)
+        value_list_layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Value list with multiple selection
+        self.value_list = QListWidget()
+        self.value_list.setSelectionMode(QAbstractItemView.MultiSelection)
+        value_list_layout.addWidget(self.value_list)
+        
+        # Value selection buttons
+        button_layout = QHBoxLayout()
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.clicked.connect(self.select_all_values)
+        deselect_all_btn = QPushButton("Deselect All")
+        deselect_all_btn.clicked.connect(self.deselect_all_values)
+        button_layout.addWidget(select_all_btn)
+        button_layout.addWidget(deselect_all_btn)
+        value_list_layout.addLayout(button_layout)
+        
+        # Add value selection to filter layout
+        filter_layout.addWidget(self.value_list_widget)
+        
+        # Date filter section
+        date_group = QGroupBox("Date Filter")
+        date_layout = QVBoxLayout()
+        
+        self.date_filter_enabled = QCheckBox("Enable Date Filter")
+        date_layout.addWidget(self.date_filter_enabled)
+        
+        date_range_layout = QGridLayout()
+        date_range_layout.addWidget(QLabel("From:"), 0, 0)
+        self.start_date_edit = QDateEdit()
+        self.start_date_edit.setCalendarPopup(True)
+        self.start_date_edit.setDate(QDate.currentDate().addDays(-30))
+        date_range_layout.addWidget(self.start_date_edit, 0, 1)
+        
+        date_range_layout.addWidget(QLabel("To:"), 1, 0)
+        self.end_date_edit = QDateEdit()
+        self.end_date_edit.setCalendarPopup(True)
+        self.end_date_edit.setDate(QDate.currentDate())
+        date_range_layout.addWidget(self.end_date_edit, 1, 1)
+        
+        date_layout.addLayout(date_range_layout)
+        date_group.setLayout(date_layout)
+        filter_layout.addWidget(date_group)
+        
+        # Action buttons
+        action_layout = QHBoxLayout()
+        apply_button = QPushButton("Apply Filter")
+        apply_button.clicked.connect(self.filter_raw_data)
+        clear_button = QPushButton("Clear Filter")
+        clear_button.clicked.connect(self.clear_filters)
+        action_layout.addWidget(apply_button)
+        action_layout.addWidget(clear_button)
+        filter_layout.addLayout(action_layout)
+        
+        # Set filter group layout
+        filter_group.setLayout(filter_layout)
+        left_layout.addWidget(filter_group)
+        left_layout.addStretch()
+        
+        # Add left panel to splitter
+        raw_data_splitter.addWidget(left_panel)
         
         # Create table view for raw data
         self.raw_data_table = QTableView()
@@ -1462,15 +1700,19 @@ class MainWindow(QMainWindow):
         
         # Create horizontal splitter for analysis controls and table
         analysis_splitter = QSplitter(Qt.Horizontal)
+        self.analysis_splitter = analysis_splitter  # Store reference for later use
         
         # Create left panel for analysis controls
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         
-        # Analysis view selector
-        view_group = QGroupBox("View Options")
-        view_layout = QVBoxLayout()
+        # Filter controls
+        filter_group = QGroupBox("Filter and View Options")
+        filter_layout = QVBoxLayout()
         
+        # Analysis view selector
+        view_layout = QHBoxLayout()
+        view_layout.addWidget(QLabel("View:"))
         self.analysis_selector = QComboBox()
         self.analysis_selector.addItems([
             "Player Overview",
@@ -1481,17 +1723,13 @@ class MainWindow(QMainWindow):
         ])
         self.analysis_selector.currentIndexChanged.connect(self.update_analysis_view)
         view_layout.addWidget(self.analysis_selector)
-        view_group.setLayout(view_layout)
-        left_layout.addWidget(view_group)
-        
-        # Filter controls
-        filter_group = QGroupBox("Filter Options")
-        filter_layout = QVBoxLayout()
+        filter_layout.addLayout(view_layout)
         
         # Column selector
         column_layout = QHBoxLayout()
-        column_layout.addWidget(QLabel("Column:"))
+        column_layout.addWidget(QLabel("Filter Column:"))
         self.analysis_column_selector = QComboBox()
+        self.analysis_column_selector.currentIndexChanged.connect(self.update_analysis_filter_options)
         column_layout.addWidget(self.analysis_column_selector)
         filter_layout.addLayout(column_layout)
         
@@ -1501,10 +1739,15 @@ class MainWindow(QMainWindow):
         self.analysis_show_value_selection.stateChanged.connect(self.toggle_analysis_value_selection)
         filter_layout.addWidget(self.analysis_show_value_selection)
         
+        # Create value list widget
+        self.analysis_value_panel = QWidget()
+        value_panel_layout = QVBoxLayout(self.analysis_value_panel)
+        value_panel_layout.setContentsMargins(0, 0, 0, 0)
+        
         # Value list
         self.analysis_value_list = QListWidget()
         self.analysis_value_list.setSelectionMode(QAbstractItemView.MultiSelection)
-        filter_layout.addWidget(self.analysis_value_list)
+        value_panel_layout.addWidget(self.analysis_value_list)
         
         # Select/Deselect buttons
         button_layout = QHBoxLayout()
@@ -1514,7 +1757,10 @@ class MainWindow(QMainWindow):
         deselect_all_btn.clicked.connect(self.deselect_all_analysis_values)
         button_layout.addWidget(select_all_btn)
         button_layout.addWidget(deselect_all_btn)
-        filter_layout.addLayout(button_layout)
+        value_panel_layout.addLayout(button_layout)
+        
+        # Add value panel to filter layout
+        filter_layout.addWidget(self.analysis_value_panel)
         
         # Date filter
         date_group = QGroupBox("Date Filter")
@@ -1621,119 +1867,3 @@ class MainWindow(QMainWindow):
         self.refresh_timer = QTimer()
         self.refresh_timer.timeout.connect(self.update_chart)
         self.refresh_timer.start(5000)  # Update every 5 seconds
-
-    def check_for_updates(self):
-        """Check for updates to the current file."""
-        # This method is called periodically by the refresh timer
-        # It checks if the current file has been modified and offers to reload it
-        
-        if not hasattr(self, 'current_file') or not self.current_file:
-            return
-            
-        try:
-            # Check if the file exists and has been modified
-            if os.path.exists(self.current_file):
-                last_modified = os.path.getmtime(self.current_file)
-                
-                # If we have a stored modification time, compare
-                if hasattr(self, 'last_modified_time') and self.last_modified_time < last_modified:
-                    # File has been modified, ask to reload
-                    reply = QMessageBox.question(
-                        self,
-                        "File Modified",
-                        f"The file {os.path.basename(self.current_file)} has been modified.\nDo you want to reload it?",
-                        QMessageBox.Yes | QMessageBox.No,
-                        QMessageBox.Yes
-                    )
-                    
-                    if reply == QMessageBox.Yes:
-                        self.load_csv_file(self.current_file)
-                
-                # Update the stored modification time
-                self.last_modified_time = last_modified
-                
-        except Exception as e:
-            # Just log the error, don't show a message to avoid interrupting the user
-            log_error("Error checking for file updates", e, show_traceback=False)
-
-    def export_current_analysis(self):
-        """Export the current analysis results to a CSV file."""
-        if not hasattr(self, 'analysis_view') or self.analysis_view.model() is None:
-            QMessageBox.warning(self, "Warning", "No analysis data to export")
-            return
-        
-        # Get the model from the analysis view
-        model = self.analysis_view.model()
-        
-        # Ask for file location
-        file_path, _ = QFileDialog.getSaveFileName(
-            self,
-            "Export Analysis Results",
-            str(self.export_dir / "analysis_export.csv"),
-            "CSV Files (*.csv);;All Files (*)"
-        )
-        
-        if not file_path:  # User canceled
-            return
-        
-        try:
-            # Get data from the model
-            rows = model.rowCount()
-            cols = model.columnCount()
-            
-            # Create DataFrame from model data
-            data = []
-            headers = []
-            
-            # Get headers
-            for col in range(cols):
-                headers.append(model.headerData(col, Qt.Horizontal, Qt.DisplayRole))
-            
-            # Get data
-            for row in range(rows):
-                row_data = []
-                for col in range(cols):
-                    value = model.data(model.index(row, col), Qt.DisplayRole)
-                    row_data.append(value)
-                data.append(row_data)
-            
-            # Create DataFrame
-            df = pd.DataFrame(data, columns=headers)
-            
-            # Export with UTF-8 encoding to preserve umlauts
-            df.to_csv(file_path, index=False, encoding='utf-8')
-            
-            # Update status
-            self.statusBar().showMessage(f"Exported analysis results to {os.path.basename(file_path)}")
-            
-            # Ask if user wants to open the file
-            reply = QMessageBox.question(
-                self,
-                "Export Complete",
-                "Analysis results exported successfully. Would you like to open the file?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
-            
-            if reply == QMessageBox.Yes:
-                # Open the file with default application
-                if sys.platform == 'win32':
-                    os.startfile(file_path)
-                elif sys.platform == 'darwin':  # macOS
-                    os.system(f'open "{file_path}"')
-                else:  # Linux
-                    os.system(f'xdg-open "{file_path}"')
-                
-        except Exception as e:
-            self.statusBar().showMessage(f"Error exporting analysis results: {str(e)}")
-            log_error("Error exporting analysis results", e, show_traceback=True)
-            
-            # Show error message
-            error_msg = QMessageBox(self)
-            error_msg.setIcon(QMessageBox.Critical)
-            error_msg.setWindowTitle("Error Exporting Analysis")
-            error_msg.setText(f"Error exporting analysis results: {str(e)}")
-            error_msg.setDetailedText(traceback.format_exc())
-            error_msg.exec_()
-
-

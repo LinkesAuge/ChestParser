@@ -114,7 +114,7 @@ class FilterArea(QWidget):
         
         # Get parent's data
         parent = self.parent()
-        if not hasattr(parent, 'processed_data') or parent.processed_data is None:
+        if not hasattr(parent, 'raw_data') or parent.raw_data is None:
             return
         
         column = self.column_selector.currentText()
@@ -122,7 +122,7 @@ class FilterArea(QWidget):
             return
         
         # Get unique values from the selected column
-        unique_values = parent.processed_data[column].astype(str).unique().tolist()
+        unique_values = parent.raw_data[column].astype(str).unique().tolist()
         unique_values.sort()
         
         # Add items to the list
@@ -132,7 +132,11 @@ class FilterArea(QWidget):
     
     def toggle_value_selection(self, state):
         """Toggle the visibility of the value selection panel."""
-        self.value_list_widget.setVisible(state)
+        if isinstance(state, bool):
+            is_visible = state
+        else:
+            is_visible = state == Qt.Checked
+        self.value_list_widget.setVisible(is_visible)
         self.update_filter_options()
     
     def select_all_values(self):
