@@ -160,84 +160,59 @@ class MainWindow(QMainWindow):
             print(f"\n--- LOAD CSV FILE: {file_path} ---\n")
         
         try:
-            # Detect encoding
-            encodings_to_try = ['utf-8', 'latin1', 'cp1252']
+            # Use our enhanced DataProcessor for robust encoding detection and umlaut handling
+            if self.debug:
+                print("Using enhanced DataProcessor.read_csv_with_encoding_fix for better umlaut handling")
+                print(f"File path type: {type(file_path)}")
+                print(f"File path: {file_path}")
+                print(f"Exists: {os.path.exists(file_path)}")
             
-            # Try to detect encoding based on content
-            with open(file_path, 'rb') as f:
-                raw_data = f.read(1024)  # Read first 1KB to detect encoding
+            # Enable debugging in DataProcessor temporarily
+            old_debug = DataProcessor.debug
+            DataProcessor.debug = self.debug
+            
+            # Try to load the file with our enhanced function
+            df, success, error_message = DataProcessor.read_csv_with_encoding_fix(file_path)
+            
+            # Restore debug flag
+            DataProcessor.debug = old_debug
+            
+            if not success:
+                print(f"CSV loading error: {error_message}")
+                self.show_error_dialog("Error Loading File", f"Failed to load CSV file: {error_message}")
+                return False
                 
-                # Check for UTF-8 BOM
-                if raw_data.startswith(b'\xef\xbb\xbf'):
-                    detected_encoding = 'utf-8-sig'
-                    if self.debug:
-                        print("Detected UTF-8 with BOM")
-                # Check for UTF-8 pattern (look for German umlauts)
-                elif b'\xc3\xa4' in raw_data or b'\xc3\xb6' in raw_data or b'\xc3\xbc' in raw_data:
-                    detected_encoding = 'utf-8'
-                    if self.debug:
-                        print("Detected UTF-8 encoding based on umlaut pattern")
-                        print(f"Raw data sample: {raw_data}")
-                else:
-                    # Default to UTF-8 but will try others if it fails
-                    detected_encoding = 'utf-8'
-                
+            # Store the data
+            self.raw_data = df.copy()
+            
+            if self.debug:
+                print(f"Successfully loaded CSV file with enhanced umlaut handling")
+                if 'PLAYER' in self.raw_data.columns:
+                    print(f"Sample players: {self.raw_data['PLAYER'].head().tolist()}")
+            
+            # Apply additional text fixing to ensure all columns are properly processed
+            try:
+                text_columns = self.raw_data.select_dtypes(include=['object']).columns
                 if self.debug:
-                    print(f"Detected encoding: {detected_encoding} based on content analysis")
-                    print(f"Trying detected encoding first: {detected_encoding}")
-            
-            # Try the detected encoding first, then fall back to others
-            if detected_encoding in encodings_to_try:
-                encodings_to_try.remove(detected_encoding)
-            encodings_to_try.insert(0, detected_encoding)
-            
-            # Try each encoding until one works
-            for encoding in encodings_to_try:
-                try:
-                    if self.debug:
-                        print(f"Trying encoding: {encoding}")
-                    
-                    self.raw_data = pd.read_csv(file_path, encoding=encoding)
-                    
-                    # Check if we can read player names with umlauts
-                    if 'PLAYER' in self.raw_data.columns:
-                        if self.debug:
-                            print(f"Sample players with {encoding}: {self.raw_data['PLAYER'].head().tolist()}")
-                        
-                        # Check for umlauts in player names
-                        for player in self.raw_data['PLAYER'].head():
-                            if 'ä' in str(player) or 'ö' in str(player) or 'ü' in str(player) or 'ß' in str(player):
-                                if self.debug:
-                                    print(f"Found umlauts in player name: {player}")
-                    
-                    break  # Successfully loaded
-                except UnicodeDecodeError:
-                    if self.debug:
-                        print(f"Failed with encoding: {encoding}")
-                    continue
-            
-            # Check if we have required columns
-            required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
-            
-            # Rename columns to standardized names if needed (case-insensitive)
-            column_mapping = {
-                'date': 'DATE',
-                'player': 'PLAYER',
-                'source': 'SOURCE',
-                'chest': 'CHEST',
-                'score': 'SCORE',
-                'clan': 'CLAN'
-            }
-            
-            self.raw_data.rename(columns=lambda x: column_mapping.get(x.lower(), x), inplace=True)
-            
+                    print(f"Applying fix_dataframe_text to text columns: {text_columns.tolist()}")
+                self.raw_data = DataProcessor.fix_dataframe_text(self.raw_data, columns=text_columns)
+            except Exception as e:
+                print(f"Warning: Error in additional text fixing: {str(e)}")
+                # Continue even if text fixing fails
+                
             # Convert SCORE to numeric
             if 'SCORE' in self.raw_data.columns:
-                self.raw_data['SCORE'] = pd.to_numeric(self.raw_data['SCORE'], errors='coerce')
+                try:
+                    self.raw_data['SCORE'] = pd.to_numeric(self.raw_data['SCORE'], errors='coerce')
+                except Exception as e:
+                    print(f"Warning: Error converting SCORE to numeric: {str(e)}")
             
             # Convert DATE to datetime
             if 'DATE' in self.raw_data.columns:
-                self.raw_data['DATE'] = pd.to_datetime(self.raw_data['DATE'], errors='coerce')
+                try:
+                    self.raw_data['DATE'] = pd.to_datetime(self.raw_data['DATE'], errors='coerce')
+                except Exception as e:
+                    print(f"Warning: Error converting DATE to datetime: {str(e)}")
             
             # Set processed data to raw data initially
             self.processed_data = self.raw_data.copy()
@@ -297,17 +272,20 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'analysis_show_value_selection') and hasattr(self, 'analysis_value_panel'):
                 self.toggle_analysis_value_selection()
             
-            # Update file label
-            self.file_label.setText(f"Loaded: {os.path.basename(file_path)}")
+            # Enable all tabs now that a CSV file is loaded
+            self.enable_all_tabs()
             
-            if self.debug:
-                print(f"\n--- COMPLETED LOADING FILE: {file_path} ---\n")
-            
+            # Update the status bar to indicate successful loading
+            self.statusBar().showMessage(f"CSV file loaded: {Path(file_path).name}")
+                
             return True
+                
         except Exception as e:
-            if self.debug:
-                print(f"Error loading CSV file: {str(e)}")
-            self.show_error_dialog("Error Loading File", f"Could not load the CSV file: {str(e)}")
+            error_msg = f"Error loading CSV file: {str(e)}"
+            print(error_msg)
+            import traceback
+            traceback.print_exc()
+            self.show_error_dialog("Error Loading File", error_msg)
             return False
 
     def apply_filter(self):
@@ -320,6 +298,9 @@ class MainWindow(QMainWindow):
         if not column:
             return
         
+        # Create a fresh model to avoid stacking filters
+        self._create_raw_data_model()
+        
         # Get selected values
         selected_values = []
         for i in range(self.value_list.count()):
@@ -328,10 +309,17 @@ class MainWindow(QMainWindow):
                 selected_values.append(item.text())
         
         # Apply filter
-        if selected_values:
+        if selected_values and hasattr(self, 'raw_data_proxy_model'):
+            if self.debug:
+                print(f"Applying filter on {column} with {len(selected_values)} selected values")
+            
+            # Store the selected values for reference
             self.processed_data = self.raw_data[self.raw_data[column].astype(str).isin(selected_values)]
+            
+            # Update the status message
             self.statusBar().showMessage(f"Filtered by {column}: {len(selected_values)} values selected")
         else:
+            # No values selected or no proxy model
             self.processed_data = self.raw_data.copy()
             self.statusBar().showMessage("No filter applied")
         
@@ -418,12 +406,12 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Analysis filters reset")
 
     def update_chart(self):
-        """Update the chart based on the selected data category, chart type, and options."""
+        """Update the chart based on the selected group by dimension, measure, chart type, and options."""
         if self.debug:
             print(f"Update chart called")
         
         # Check if we have necessary UI components
-        if not hasattr(self, 'chart_data_category') or not hasattr(self, 'chart_type_selector') or not hasattr(self, 'chart_canvas'):
+        if not hasattr(self, 'chart_group_by') or not hasattr(self, 'chart_measure') or not hasattr(self, 'chart_canvas'):
             if self.debug:
                 print("Chart UI components not found")
             return
@@ -436,23 +424,38 @@ class MainWindow(QMainWindow):
         
         try:
             # Get the selected options
-            data_category = self.chart_data_category.currentText()
+            group_by_dimension = self.chart_group_by.currentText()
+            measure = self.chart_measure.currentText()
             chart_type = self.chart_type_selector.currentText()
             
-            # Get selected data column
-            data_column = self.chart_data_column.currentText() if hasattr(self, 'chart_data_column') else "SCORE"
+            # Map the group by dimension to the right data category for getting the correct dataset
+            data_category = ""
+            category_column = ""
+            
+            if group_by_dimension == "PLAYER":
+                data_category = "Player Totals"
+                category_column = 'PLAYER'
+            elif group_by_dimension == "CHEST":
+                data_category = "Chest Totals"
+                category_column = 'CHEST'
+            elif group_by_dimension == "SOURCE":
+                data_category = "Source Totals"
+                category_column = 'SOURCE'
+            elif group_by_dimension == "DATE":
+                data_category = "Date Totals"
+                category_column = 'DATE'
             
             # Get sort options
-            sort_column = self.chart_sort_column.currentText() if hasattr(self, 'chart_sort_column') else data_column
-            sort_ascending = self.chart_sort_order.currentText() == "Ascending" if hasattr(self, 'chart_sort_order') else False
+            sort_column = self.chart_sort_column.currentText()
+            sort_ascending = self.chart_sort_order.currentText() == "Ascending"
             
             # Get limit options
-            limit_results = self.chart_limit_checkbox.isChecked() if hasattr(self, 'chart_limit_checkbox') else False
-            limit_value = self.chart_limit_value.value() if hasattr(self, 'chart_limit_value') else 10
+            limit_results = self.chart_limit_checkbox.isChecked()
+            limit_value = self.chart_limit_value.value()
             
             # Get display options
-            show_values = self.chart_show_values.isChecked() if hasattr(self, 'chart_show_values') else True
-            show_grid = self.chart_show_grid.isChecked() if hasattr(self, 'chart_show_grid') else True
+            show_values = self.chart_show_values.isChecked()
+            show_grid = self.chart_show_grid.isChecked()
             
             # Clear the figure
             self.chart_figure.clear()
@@ -477,19 +480,23 @@ class MainWindow(QMainWindow):
             for text in ax.get_xticklabels() + ax.get_yticklabels():
                 text.set_color('#FFFFFF')
             
-            # Get data based on data category
+            # Get data based on group by dimension (via data category mapping)
             if data_category == "Player Totals":
                 data = self.analysis_results['player_totals'].copy()
-                category_column = 'PLAYER'
+                if self.debug:
+                    print(f"Player Totals columns: {data.columns.tolist()}")
             elif data_category == "Chest Totals":
                 data = self.analysis_results['chest_totals'].copy()
-                category_column = 'CHEST'
+                if self.debug:
+                    print(f"Chest Totals columns: {data.columns.tolist()}")
             elif data_category == "Source Totals":
                 data = self.analysis_results['source_totals'].copy()
-                category_column = 'SOURCE'
+                if self.debug:
+                    print(f"Source Totals columns: {data.columns.tolist()}")
             elif data_category == "Date Totals":
                 data = self.analysis_results['date_totals'].copy()
-                category_column = 'DATE'
+                if self.debug:
+                    print(f"Date Totals columns: {data.columns.tolist()}")
             else:
                 if self.debug:
                     print(f"Unknown data category: {data_category}")
@@ -501,17 +508,38 @@ class MainWindow(QMainWindow):
                     print(f"No data available for {data_category}")
                 return
             
-            # Make sure the data column exists
-            if data_column not in data.columns:
-                data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
+            # Make sure the measure column exists in the dataset
+            if measure not in data.columns:
+                # Some analyses might have different column names
+                if measure == "TOTAL_SCORE" and "SCORE" in data.columns:
+                    measure = "SCORE"
+                    if self.debug:
+                        print(f"Using SCORE instead of TOTAL_SCORE")
+                elif measure == "CHEST_COUNT" and "COUNT" in data.columns:
+                    # We should not reach this now as we're adding CHEST_COUNT to all datasets,
+                    # but keep as fallback
+                    measure = "COUNT" 
+                    if self.debug:
+                        print(f"Using COUNT instead of CHEST_COUNT")
+                else:
+                    measure = "SCORE"  # Default fallback
+                    if self.debug:
+                        print(f"Using default fallback measure: SCORE")
+                
                 if self.debug:
-                    print(f"Column {data_column} not found, falling back to SCORE")
+                    print(f"Column {measure} not found, falling back to {measure}")
             
             # Sort data
-            if sort_column in data.columns:
-                data = data.sort_values(sort_column, ascending=sort_ascending)
+            sort_by = sort_column
+            # If sort column doesn't exist in this dataset, use the measure column
+            if sort_column not in data.columns:
+                sort_by = measure
                 if self.debug:
-                    print(f"Sorted data by {sort_column} (ascending={sort_ascending})")
+                    print(f"Sort column {sort_column} not found, using {measure} instead")
+            
+            data = data.sort_values(sort_by, ascending=sort_ascending)
+            if self.debug:
+                print(f"Sorted data by {sort_by} (ascending={sort_ascending})")
             
             # Now apply limit to the sorted data
             if limit_results and len(data) > limit_value:
@@ -527,10 +555,21 @@ class MainWindow(QMainWindow):
                 data = data.iloc[::-1].reset_index(drop=True)
             
             # Create chart based on selected chart type
+            chart_title = f"{group_by_dimension} by {measure}"
+            
+            if self.debug:
+                print(f"Creating chart with title: {chart_title}")
+                print(f"Using measure column: {measure}")
+                if measure in data.columns:
+                    print(f"Measure column values (first 5): {data[measure].head().tolist()}")
+                else:
+                    print(f"WARNING: Measure column '{measure}' not found in data!")
+                    print(f"Available columns: {data.columns.tolist()}")
+            
             if chart_type == "Bar Chart":
-                bars = ax.bar(data[category_column].values, data[data_column].values, color='#5991C4')
-                ax.set_ylabel(f'{data_column.replace("_", " ").title()}')
-                ax.set_title(f'{data_category}: {data_column.replace("_", " ").title()}')
+                bars = ax.bar(data[category_column].values, data[measure].values, color='#5991C4')
+                ax.set_ylabel(f'{measure.replace("_", " ").title()}')
+                ax.set_title(chart_title)
                 plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
                 
                 # Add values on top of each bar if requested
@@ -541,21 +580,21 @@ class MainWindow(QMainWindow):
                                f'{height:,.0f}', ha='center', va='bottom', color='white', fontweight='bold')
                                
             elif chart_type == "Horizontal Bar":
-                bars = ax.barh(data[category_column].values, data[data_column].values, color='#D4AF37')
-                ax.set_xlabel(f'{data_column.replace("_", " ").title()}')
-                ax.set_title(f'{data_category}: {data_column.replace("_", " ").title()}')
+                bars = ax.barh(data[category_column].values, data[measure].values, color='#D4AF37')
+                ax.set_xlabel(f'{measure.replace("_", " ").title()}')
+                ax.set_title(chart_title)
                 
                 # Add values at the end of each bar if requested
                 if show_values:
                     for i, bar in enumerate(bars):
-                        value = data[data_column].values[i]
+                        value = data[measure].values[i]
                         ax.text(value, bar.get_y() + bar.get_height()/2, f" {value:,.0f}", 
                                va='center', color='white', fontweight='bold')
                 
             elif chart_type == "Pie Chart":
                 pie_colors = ['#D4AF37', '#5991C4', '#6EC1A7', '#D46A5F', '#9966CC', '#F0C75A', '#527A96']
                 wedges, texts, autotexts = ax.pie(
-                    data[data_column].values, 
+                    data[measure].values, 
                     labels=data[category_column].values, 
                     autopct='%1.1f%%' if show_values else '',
                     colors=pie_colors[:len(data)],
@@ -566,17 +605,17 @@ class MainWindow(QMainWindow):
                     text.set_color('white')
                 for autotext in autotexts:
                     autotext.set_fontweight('bold')
-                ax.set_title(f'{data_category}: {data_column.replace("_", " ").title()} Distribution')
+                ax.set_title(f'{chart_title} Distribution')
                 
             elif chart_type == "Line Chart":
-                line = ax.plot(data[category_column].values, data[data_column].values, marker='o', color='#6EC1A7', linewidth=2)
-                ax.set_ylabel(f'{data_column.replace("_", " ").title()}')
-                ax.set_title(f'{data_category}: {data_column.replace("_", " ").title()} Trends')
+                line = ax.plot(data[category_column].values, data[measure].values, marker='o', color='#6EC1A7', linewidth=2)
+                ax.set_ylabel(f'{measure.replace("_", " ").title()}')
+                ax.set_title(f'{chart_title} Trends')
                 plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
                 
                 # Add values on data points if requested
                 if show_values:
-                    for i, value in enumerate(data[data_column].values):
+                    for i, value in enumerate(data[measure].values):
                         ax.annotate(f'{value:,.0f}', 
                                   (data[category_column].values[i], value),
                                   textcoords="offset points", 
@@ -592,7 +631,7 @@ class MainWindow(QMainWindow):
             self.chart_canvas.draw()
             
             if self.debug:
-                print(f"Chart updated: {chart_type} for {data_category}")
+                print(f"Chart updated: {chart_type} for {group_by_dimension} by {measure}")
                 
         except Exception as e:
             if self.debug:
@@ -674,18 +713,24 @@ class MainWindow(QMainWindow):
                 
                 # Get the current chart data
                 try:
-                    # Get data based on data category
-                    data_category = self.chart_data_category.currentText()
-                    if data_category == "Player Totals":
+                    # Get data based on group by dimension
+                    group_by_dimension = self.chart_group_by.currentText()
+                    data_category = ""
+                    
+                    if group_by_dimension == "PLAYER":
+                        data_category = "Player Totals"
                         data = self.analysis_results['player_totals'].copy()
-                    elif data_category == "Chest Totals":
+                    elif group_by_dimension == "CHEST":
+                        data_category = "Chest Totals"
                         data = self.analysis_results['chest_totals'].copy()
-                    elif data_category == "Source Totals":
+                    elif group_by_dimension == "SOURCE":
+                        data_category = "Source Totals"
                         data = self.analysis_results['source_totals'].copy()
-                    elif data_category == "Date Totals":
+                    elif group_by_dimension == "DATE":
+                        data_category = "Date Totals"
                         data = self.analysis_results['date_totals'].copy()
                     else:
-                        self.statusBar().showMessage(f"Unknown data category: {data_category}")
+                        self.statusBar().showMessage(f"Unknown group by dimension: {group_by_dimension}")
                         return
                     
                     # Check if we have data to export
@@ -693,53 +738,53 @@ class MainWindow(QMainWindow):
                         self.statusBar().showMessage(f"No data available to export")
                         return
                     
-                    # Get the appropriate data column based on the data category
-                    # Since chart_data_column is now hidden but initialized in update_chart_data_column,
-                    # we need to access it explicitly
-                    if hasattr(self, 'chart_data_column'):
-                        data_column = self.chart_data_column.currentText()
-                    else:
-                        # Fallback based on data category
-                        if data_category == "Player Totals":
-                            data_column = "SCORE"
-                        elif data_category == "Chest Totals":
-                            data_column = "CHEST_COUNT"
-                        elif data_category == "Source Totals":
-                            data_column = "SCORE"
-                        elif data_category == "Date Totals":
-                            data_column = "SCORE"
-                        else:
-                            data_column = "SCORE"  # Default fallback
-                        
-                        if self.debug:
-                            print(f"Using fallback data column: {data_column} for {data_category}")
+                    # Get the selected measure
+                    measure = self.chart_measure.currentText()
                     
+                    # Make sure the measure column exists in the dataset
+                    if measure not in data.columns:
+                        if self.debug:
+                            print(f"Measure column '{measure}' not found in data! Available columns: {data.columns.tolist()}")
+                        
+                        # Some analyses might have different column names
+                        if measure == "TOTAL_SCORE" and "SCORE" in data.columns:
+                            measure = "SCORE"
+                            if self.debug:
+                                print(f"Using SCORE instead of TOTAL_SCORE for export")
+                        else:
+                            measure = "SCORE"  # Default fallback
+                            if self.debug:
+                                print(f"Using default fallback measure: SCORE for export")
+                    
+                    # Get the sorting options
                     sort_column = self.chart_sort_column.currentText()
                     sort_ascending = self.chart_sort_order.currentText() == "Ascending"
                     limit_results = self.chart_limit_checkbox.isChecked()
                     limit_value = self.chart_limit_value.value()
                     
-                    # Make sure the data column exists
-                    if data_column not in data.columns:
-                        data_column = "SCORE"  # Fallback to SCORE if column doesn't exist
+                    # Apply sorting and limiting to match what's shown in the chart
+                    sort_by = sort_column
+                    if sort_column not in data.columns:
+                        sort_by = measure
                         if self.debug:
-                            print(f"Column {data_column} not found, falling back to SCORE")
+                            print(f"Sort column {sort_column} not found, using {measure} instead")
                     
-                    # Sort data
-                    if sort_column in data.columns:
-                        data = data.sort_values(sort_column, ascending=sort_ascending)
-                        if self.debug:
-                            print(f"Sorted data by {sort_column} (ascending={sort_ascending})")
+                    data = data.sort_values(sort_by, ascending=sort_ascending)
                     
-                    # Apply limit if needed
                     if limit_results and len(data) > limit_value:
                         data = data.head(limit_value)
-                        if self.debug:
-                            print(f"Limited to top {limit_value} items after sorting")
                     
                     # Export to file
                     if file_path.lower().endswith('.csv'):
-                        data.to_csv(file_path, index=False)
+                        # Use our new write_csv_with_umlauts function for proper umlaut handling
+                        if not DataProcessor.write_csv_with_umlauts(data, file_path):
+                            QMessageBox.warning(
+                                self,
+                                "CSV Export Error",
+                                "Failed to export CSV file with proper encoding.",
+                                QMessageBox.Ok
+                            )
+                            return
                     elif file_path.lower().endswith('.xlsx'):
                         try:
                             data.to_excel(file_path, index=False)
@@ -751,9 +796,16 @@ class MainWindow(QMainWindow):
                                 "Excel export requires the openpyxl package. Saving as CSV instead.",
                                 QMessageBox.Ok
                             )
-                            # Save as CSV instead
+                            # Save as CSV instead with proper umlaut handling
                             file_path = file_path.replace('.xlsx', '.csv')
-                            data.to_csv(file_path, index=False)
+                            if not DataProcessor.write_csv_with_umlauts(data, file_path):
+                                QMessageBox.warning(
+                                    self,
+                                    "CSV Export Error",
+                                    "Failed to export CSV file with proper encoding.",
+                                    QMessageBox.Ok
+                                )
+                                return
                     
                     self.statusBar().showMessage(f"Chart data exported to {file_path}")
                 
@@ -762,12 +814,12 @@ class MainWindow(QMainWindow):
                         print(f"Error exporting chart data: {str(e)}")
                         traceback.print_exc()
                     self.statusBar().showMessage(f"Error exporting chart data: {str(e)}")
-            
+        
         except Exception as e:
-            self.statusBar().showMessage(f"Error saving chart: {str(e)}")
             if self.debug:
                 print(f"Error saving chart: {str(e)}")
                 traceback.print_exc()
+            self.statusBar().showMessage(f"Error saving chart: {str(e)}")
 
     def process_data(self):
         """Process the loaded data to prepare it for analysis and visualization."""
@@ -1117,7 +1169,6 @@ class MainWindow(QMainWindow):
             # Use the DataProcessor to analyze the data
             if self.debug:
                 print("Calling DataProcessor.analyze_data...")
-            from modules.dataprocessor import DataProcessor
             analysis_results = DataProcessor.analyze_data(df)
             
             if self.debug:
@@ -1337,19 +1388,28 @@ class MainWindow(QMainWindow):
     def _create_raw_data_model(self):
         """Create and set the model for the raw data table."""
         from modules.customtablemodel import CustomTableModel
+        from PySide6.QtCore import QSortFilterProxyModel
         
         # Create a model for the raw data table
-        model = CustomTableModel(self.processed_data)
+        source_model = CustomTableModel(self.processed_data)
         
-        # Set the model for the table
+        # Create a proxy model for sorting and filtering
+        self.raw_data_proxy_model = QSortFilterProxyModel()
+        self.raw_data_proxy_model.setSourceModel(source_model)
+        
+        # Set the proxy model for the table
         if hasattr(self, 'raw_data_table'):
-            self.raw_data_table.setModel(model)
+            self.raw_data_table.setModel(self.raw_data_proxy_model)
+            
+            # Enable sorting
+            self.raw_data_table.setSortingEnabled(True)
             
             # Resize columns to content
             self.raw_data_table.resizeColumnsToContents()
             
             if self.debug:
                 print(f"Created raw data model with {len(self.processed_data)} rows and {len(self.processed_data.columns)} columns")
+                print(f"Set up proxy model for raw data table for sorting and filtering")
 
     def setup_ui_components(self):
         """Set up the UI components."""
@@ -1382,6 +1442,9 @@ class MainWindow(QMainWindow):
         self.tab_widget.addTab(self.analysis_tab, "Analysis")
         self.tab_widget.addTab(self.charts_tab, "Charts")
         
+        # Initially disable all tabs except Import (index 0)
+        self.disable_tabs_except_import()
+        
         # Add tab widget to main layout
         main_layout.addWidget(self.tab_widget)
         
@@ -1393,6 +1456,30 @@ class MainWindow(QMainWindow):
         
         if self.debug:
             print("UI components initialized")
+            
+    def disable_tabs_except_import(self):
+        """Disable all tabs except the Import tab (index 0)."""
+        for i in range(1, self.tab_widget.count()):
+            self.tab_widget.setTabEnabled(i, False)
+        
+        # Apply greyed out styling to disabled tabs
+        self.tab_widget.setStyleSheet("""
+            QTabBar::tab:disabled {
+                color: #666666;
+                background-color: #1A2742;
+            }
+        """)
+        
+    def enable_all_tabs(self):
+        """Enable all tabs."""
+        for i in range(self.tab_widget.count()):
+            self.tab_widget.setTabEnabled(i, True)
+            
+        # Remove the disabled styling
+        self.tab_widget.setStyleSheet("")
+        
+        # Apply the theme to ensure consistent styling
+        self.apply_theme()
 
     def setup_import_tab(self):
         """Set up the Import tab."""
@@ -1481,6 +1568,12 @@ class MainWindow(QMainWindow):
         action_layout.addWidget(self.apply_filter_button)
         action_layout.addWidget(self.reset_filter_button)
         filter_layout.addLayout(action_layout)
+        
+        # Add export button at the bottom
+        export_layout = QHBoxLayout()
+        self.export_raw_data_button = QPushButton("Export to CSV")
+        export_layout.addWidget(self.export_raw_data_button)
+        filter_layout.addLayout(export_layout)
         
         filter_group.setLayout(filter_layout)
         left_layout.addWidget(filter_group, 1)  # Set stretch factor to 1 to use all available space
@@ -1584,6 +1677,12 @@ class MainWindow(QMainWindow):
         action_layout.addWidget(self.reset_analysis_filter_button)
         filter_layout.addLayout(action_layout)
         
+        # Add export button at the bottom
+        export_layout = QHBoxLayout()
+        self.export_analysis_button = QPushButton("Export to CSV")
+        export_layout.addWidget(self.export_analysis_button)
+        filter_layout.addLayout(export_layout)
+        
         filter_group.setLayout(filter_layout)
         left_layout.addWidget(filter_group, 1)  # Set stretch factor to 1 to use all available space
         left_layout.addStretch(0)  # Reduce the stretch factor to 0
@@ -1601,7 +1700,7 @@ class MainWindow(QMainWindow):
         
         # Set splitter sizes (30% controls, 70% table)
         analysis_splitter.setSizes([300, 700])
-        layout.addWidget(analysis_splitter)
+        layout.addWidget(analysis_splitter, 1)
         
         if self.debug:
             print("Analysis tab setup complete")
@@ -1640,9 +1739,33 @@ class MainWindow(QMainWindow):
         chart_type_layout.addWidget(self.chart_type_selector)
         chart_controls_layout.addLayout(chart_type_layout)
         
-        # Data category selection
-        data_layout = QHBoxLayout()
-        data_layout.addWidget(QLabel("Data to Show:"))
+        # NEW: Two-step data selection
+        # 1. Group By (dimension)
+        group_by_layout = QHBoxLayout()
+        group_by_layout.addWidget(QLabel("Group By:"))
+        self.chart_group_by = QComboBox()
+        self.chart_group_by.addItems([
+            "PLAYER",
+            "CHEST",
+            "SOURCE",
+            "DATE"
+        ])
+        group_by_layout.addWidget(self.chart_group_by)
+        chart_controls_layout.addLayout(group_by_layout)
+        
+        # 2. Measure (metric)
+        measure_layout = QHBoxLayout()
+        measure_layout.addWidget(QLabel("Measure:"))
+        self.chart_measure = QComboBox()
+        self.chart_measure.addItems([
+            "SCORE",
+            "CHEST_COUNT",
+            "TOTAL_SCORE"
+        ])
+        measure_layout.addWidget(self.chart_measure)
+        chart_controls_layout.addLayout(measure_layout)
+        
+        # For compatibility with existing code
         self.chart_data_category = QComboBox()
         self.chart_data_category.addItems([
             "Player Totals",
@@ -1650,8 +1773,10 @@ class MainWindow(QMainWindow):
             "Source Totals",
             "Date Totals"
         ])
-        data_layout.addWidget(self.chart_data_category)
-        chart_controls_layout.addLayout(data_layout)
+        self.chart_data_category.setVisible(False)  # Hide the old dropdown
+        self.chart_data_column = QComboBox()
+        self.chart_data_column.addItems(["SCORE", "CHEST_COUNT", "TOTAL_SCORE"])
+        self.chart_data_column.setVisible(False)  # Hide the old dropdown
         
         # Sorting group
         sorting_group = QGroupBox("Sorting Options")
@@ -1661,7 +1786,7 @@ class MainWindow(QMainWindow):
         sort_column_layout = QHBoxLayout()
         sort_column_layout.addWidget(QLabel("Sort By:"))
         self.chart_sort_column = QComboBox()
-        self.chart_sort_column.addItems(["SCORE", "CHEST_COUNT", "TOTAL_SCORE", "PLAYER", "DATE", "SOURCE", "CHEST"])
+        self.chart_sort_column.addItems(["SCORE", "CHEST_COUNT", "TOTAL_SCORE"])
         sort_column_layout.addWidget(self.chart_sort_column)
         sorting_layout.addLayout(sort_column_layout)
         
@@ -1682,6 +1807,7 @@ class MainWindow(QMainWindow):
         self.chart_limit_value.setRange(1, 50)
         self.chart_limit_value.setValue(10)
         self.chart_limit_value.setSuffix(" items")
+        # The styling is now applied globally in StyleManager
         limit_layout.addWidget(self.chart_limit_value)
         limit_layout.addStretch()
         sorting_layout.addLayout(limit_layout)
@@ -1710,8 +1836,9 @@ class MainWindow(QMainWindow):
         # Action buttons
         action_layout = QVBoxLayout()
         
-        self.apply_chart_options = QPushButton("Apply Options")
-        action_layout.addWidget(self.apply_chart_options)
+        # Remove the Apply Options button as we'll make all controls update immediately
+        # self.apply_chart_options = QPushButton("Apply Options")
+        # action_layout.addWidget(self.apply_chart_options)
         
         self.save_chart_button = QPushButton("Save Chart")
         action_layout.addWidget(self.save_chart_button)
@@ -1751,39 +1878,140 @@ class MainWindow(QMainWindow):
         # Add splitter to main layout
         layout.addWidget(charts_splitter, 1)
         
-        # Connect signals
-        self.chart_data_category.currentIndexChanged.connect(self.update_chart_data_column)
-        self.chart_data_category.currentIndexChanged.connect(self.update_chart)
+        # Connect signals - make all controls update immediately
+        self.chart_group_by.currentIndexChanged.connect(self.update_chart_data_category)
+        self.chart_measure.currentIndexChanged.connect(self.update_chart_data_column)
+        self.chart_group_by.currentIndexChanged.connect(self.update_chart)
+        self.chart_measure.currentIndexChanged.connect(self.update_chart)
         self.chart_type_selector.currentIndexChanged.connect(self.update_chart)
-        self.apply_chart_options.clicked.connect(self.update_chart)
+        # Connect the remaining controls to update_chart for immediate updates
+        self.chart_sort_column.currentIndexChanged.connect(self.update_chart)
+        self.chart_sort_order.currentIndexChanged.connect(self.update_chart)
+        self.chart_limit_checkbox.stateChanged.connect(self.update_chart)
+        self.chart_limit_value.valueChanged.connect(self.update_chart)
+        self.chart_show_values.stateChanged.connect(self.update_chart)
+        self.chart_show_grid.stateChanged.connect(self.update_chart)
+        # Connect the save button to the save_chart method
         self.save_chart_button.clicked.connect(self.save_chart)
         
         if self.debug:
             print("Charts tab setup complete")
             
-    def update_chart_data_column(self):
-        """
-        Update the data column based on the selected data category.
-        This automatically selects the appropriate column for the data category.
-        """
-        data_category = self.chart_data_category.currentText()
+    def update_chart_data_category(self):
+        """Update the data category based on the selected Group By dimension.
         
-        # Set the default column based on the data category
-        if data_category == "Player Totals":
-            self.chart_data_column.setCurrentText("SCORE")
-        elif data_category == "Chest Totals":
-            self.chart_data_column.setCurrentText("CHEST_COUNT")
-        elif data_category == "Source Totals":
-            self.chart_data_column.setCurrentText("SCORE")
-        elif data_category == "Date Totals":
-            self.chart_data_column.setCurrentText("SCORE")
+        This updates the internal chart_data_category combobox which is still used
+        by other functions for compatibility.
+        """
+        if not hasattr(self, 'chart_group_by'):
+            return
             
-        # Also update the sort column to match
-        if self.chart_sort_column.findText(self.chart_data_column.currentText()) != -1:
-            self.chart_sort_column.setCurrentText(self.chart_data_column.currentText())
+        # Get the selected group by dimension
+        group_by = self.chart_group_by.currentText()
         
+        # Update the hidden data category combobox (for compatibility)
+        if group_by == "PLAYER":
+            self.chart_data_category.setCurrentText("Player Totals")
+        elif group_by == "CHEST":
+            self.chart_data_category.setCurrentText("Chest Totals")
+        elif group_by == "SOURCE":
+            self.chart_data_category.setCurrentText("Source Totals")
+        elif group_by == "DATE":
+            self.chart_data_category.setCurrentText("Date Totals")
+            
+        # Update the available measures based on the group by dimension
+        self.update_available_measures()
+            
+        # Update the chart
+        self.update_chart()
+            
+    def update_available_measures(self):
+        """Update the available measures based on the selected Group By dimension."""
+        if not hasattr(self, 'chart_group_by') or not hasattr(self, 'chart_measure'):
+            return
+            
+        # Save current selection if possible
+        current_measure = self.chart_measure.currentText() if self.chart_measure.count() > 0 else ""
+            
+        # Clear existing items
+        self.chart_measure.clear()
+        
+        # Get the selected group by dimension
+        group_by = self.chart_group_by.currentText()
+        
+        # Add appropriate measure options based on group by dimension
+        if group_by == "PLAYER":
+            self.chart_measure.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_SCORE"])
+        elif group_by == "CHEST":
+            self.chart_measure.addItems(["SCORE", "CHEST_COUNT"])
+        elif group_by == "SOURCE":
+            self.chart_measure.addItems(["SCORE", "CHEST_COUNT"])
+        elif group_by == "DATE":
+            self.chart_measure.addItems(["SCORE", "CHEST_COUNT"])
+        
+        # Restore previous selection if it's still valid
+        index = self.chart_measure.findText(current_measure)
+        if index >= 0:
+            self.chart_measure.setCurrentIndex(index)
+        
+        # Update the sort column options as well
+        self.update_sort_options()
+        
+    def update_sort_options(self):
+        """Update the available sort options based on the selected Group By dimension and Measure."""
+        if not hasattr(self, 'chart_group_by') or not hasattr(self, 'chart_sort_column'):
+            return
+            
+        # Save current selection if possible
+        current_sort = self.chart_sort_column.currentText() if self.chart_sort_column.count() > 0 else ""
+            
+        # Clear existing items
+        self.chart_sort_column.clear()
+        
+        # Get the selected group by dimension and measure
+        group_by = self.chart_group_by.currentText()
+        measure = self.chart_measure.currentText() if hasattr(self, 'chart_measure') else ""
+        
+        # Add appropriate sort options based on group by dimension
+        if group_by == "PLAYER":
+            self.chart_sort_column.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_SCORE", "PLAYER"])
+        elif group_by == "CHEST":
+            self.chart_sort_column.addItems(["SCORE", "CHEST_COUNT", "CHEST_TYPE"])
+        elif group_by == "SOURCE":
+            self.chart_sort_column.addItems(["SCORE", "CHEST_COUNT", "SOURCE"])
+        elif group_by == "DATE":
+            self.chart_sort_column.addItems(["SCORE", "CHEST_COUNT", "DATE"])
+        
+        # Restore previous selection if it's still valid, otherwise select the measure
+        index = self.chart_sort_column.findText(current_sort)
+        if index >= 0:
+            self.chart_sort_column.setCurrentIndex(index)
+        elif measure:
+            index = self.chart_sort_column.findText(measure)
+            if index >= 0:
+                self.chart_sort_column.setCurrentIndex(index)
+    
+    def update_chart_data_column(self):
+        """Update the data column based on the selected Measure.
+        
+        This updates the internal chart_data_column combobox which is still used
+        by other functions for compatibility.
+        """
+        if not hasattr(self, 'chart_measure'):
+            return
+            
+        # Get the selected measure
+        measure = self.chart_measure.currentText()
+        
+        # Now we directly set the measure to the column name since they match
+        # (CHEST_COUNT, SCORE, etc.) in all datasets
+        self.chart_data_column.setCurrentText(measure)
+                
         if self.debug:
-            print(f"Set data column to {self.chart_data_column.currentText()} for {data_category}")
+            print(f"Update chart data column: Measure={measure}, Selected Column={self.chart_data_column.currentText()}")
+            
+        # Update the chart
+        self.update_chart()
 
     def apply_theme(self):
         """Apply the dark theme to the application."""
@@ -1852,6 +2080,8 @@ class MainWindow(QMainWindow):
             self.apply_filter_button.clicked.connect(self.apply_filter)
         if hasattr(self, 'reset_filter_button'):
             self.reset_filter_button.clicked.connect(self.reset_filter)
+        if hasattr(self, 'export_raw_data_button'):
+            self.export_raw_data_button.clicked.connect(self.export_raw_data)
         
         # Analysis tab
         if hasattr(self, 'analysis_column_selector'):
@@ -1866,13 +2096,10 @@ class MainWindow(QMainWindow):
             self.apply_analysis_filter_button.clicked.connect(self.apply_analysis_filter)
         if hasattr(self, 'reset_analysis_filter_button'):
             self.reset_analysis_filter_button.clicked.connect(self.reset_analysis_filter)
+        if hasattr(self, 'export_analysis_button'):
+            self.export_analysis_button.clicked.connect(self.export_analysis_data)
         if hasattr(self, 'analysis_selector'):
             self.analysis_selector.currentIndexChanged.connect(self.update_analysis_view)
-        if hasattr(self, 'analysis_chart_selector'):
-            self.analysis_chart_selector.currentIndexChanged.connect(self.update_chart)
-        
-        if self.debug:
-            print("Signals connected")
 
     def open_csv_file(self):
         """Open a CSV file using a file dialog."""
@@ -1885,3 +2112,203 @@ class MainWindow(QMainWindow):
         
         if file_path:
             self.load_csv_file(file_path)
+
+    def export_raw_data(self):
+        """Export the currently displayed raw data to a CSV file."""
+        if not hasattr(self, 'raw_data_table') or not hasattr(self, 'processed_data'):
+            self.statusBar().showMessage("No data to export")
+            return
+            
+        try:
+            # Get the current filtered data from the proxy model
+            if hasattr(self, 'raw_data_proxy_model'):
+                model = self.raw_data_proxy_model
+                
+                # Get the number of rows and columns in the proxy model
+                rows = model.rowCount()
+                cols = model.columnCount()
+                
+                if rows == 0 or cols == 0:
+                    self.statusBar().showMessage("No data to export after filtering")
+                    return
+                    
+                # Get the source model (CustomTableModel)
+                source_model = model.sourceModel()
+                
+                # Get the header names
+                headers = [source_model.headerData(col, Qt.Horizontal) for col in range(cols)]
+                
+                # Create a new DataFrame to hold the filtered data
+                filtered_data = pd.DataFrame(columns=headers)
+                
+                # Populate the DataFrame with filtered data
+                for row in range(rows):
+                    row_data = {}
+                    for col in range(cols):
+                        # Map the proxy model index to the source model index
+                        source_index = model.mapToSource(model.index(row, col))
+                        
+                        # Get the data from the source model
+                        value = source_model.data(source_index, Qt.DisplayRole)
+                        
+                        # Add to row data dictionary
+                        row_data[headers[col]] = value
+                    
+                    # Add the row to the DataFrame
+                    filtered_data.loc[row] = row_data
+                
+                # If we have no data after filtering, show a message
+                if filtered_data.empty:
+                    self.statusBar().showMessage("No data to export after filtering")
+                    return
+                    
+                # Check export directory
+                export_dir = self.config_manager.get_export_directory()
+                
+                # Create the export directory if it doesn't exist
+                if not os.path.exists(export_dir):
+                    Path(export_dir).mkdir(parents=True, exist_ok=True)
+                
+                # Default filename
+                default_filename = str(Path(export_dir) / "raw_data_export.csv")
+                
+                # Show save dialog
+                file_path, _ = QFileDialog.getSaveFileName(
+                    self, "Export Raw Data", default_filename, "CSV Files (*.csv)"
+                )
+                
+                if not file_path:
+                    return  # User canceled
+                
+                # Use DataProcessor to write CSV with proper umlaut handling
+                if DataProcessor.write_csv_with_umlauts(filtered_data, file_path):
+                    self.statusBar().showMessage(f"Raw data exported to {file_path}")
+                else:
+                    QMessageBox.warning(
+                        self,
+                        "Export Error",
+                        "Failed to export data to CSV. See console for details.",
+                        QMessageBox.Ok
+                    )
+            else:
+                self.statusBar().showMessage("No filtered data available to export")
+        except Exception as e:
+            if self.debug:
+                print(f"Error exporting raw data: {str(e)}")
+                traceback.print_exc()
+            self.statusBar().showMessage(f"Error exporting data: {str(e)}")
+            QMessageBox.warning(
+                self,
+                "Export Error",
+                f"An error occurred while exporting: {str(e)}",
+                QMessageBox.Ok
+            )
+    
+    def export_analysis_data(self):
+        """Export the current analysis view to a CSV file."""
+        if not hasattr(self, 'analysis_view') or not hasattr(self, 'analysis_results'):
+            self.statusBar().showMessage("No analysis data to export")
+            return
+            
+        try:
+            # Get the current analysis view
+            current_view = self.analysis_selector.currentText()
+            
+            # Get the appropriate DataFrame based on the selected view
+            if current_view == "Player Totals":
+                df = self.analysis_results['player_totals'].copy()
+            elif current_view == "Chest Totals":
+                df = self.analysis_results['chest_totals'].copy()
+            elif current_view == "Source Totals":
+                df = self.analysis_results['source_totals'].copy()
+            elif current_view == "Date Totals":
+                df = self.analysis_results['date_totals'].copy()
+            elif current_view == "Player Overview":
+                df = self.analysis_results['player_overview'].copy()
+            else:
+                self.statusBar().showMessage(f"Unknown analysis view: {current_view}")
+                return
+            
+            # If we have a proxy model, get the filtered data
+            if hasattr(self, 'analysis_proxy_model'):
+                model = self.analysis_proxy_model
+                source_model = model.sourceModel()
+                
+                # Get the column count and header names
+                cols = source_model.columnCount()
+                headers = [source_model.headerData(col, Qt.Horizontal) for col in range(cols)]
+                
+                # Get the row count from the filtered model
+                rows = model.rowCount()
+                
+                if rows == 0:
+                    self.statusBar().showMessage("No data to export after filtering")
+                    return
+                
+                # Create a new DataFrame for filtered data
+                filtered_data = pd.DataFrame(columns=headers)
+                
+                # Populate the DataFrame with filtered data
+                for row in range(rows):
+                    row_data = {}
+                    for col in range(cols):
+                        # Map the proxy model index to the source model index
+                        source_index = model.mapToSource(model.index(row, col))
+                        
+                        # Get the data from the source model
+                        value = source_model.data(source_index, Qt.DisplayRole)
+                        
+                        # Add to row data dictionary
+                        row_data[headers[col]] = value
+                    
+                    # Add the row to the DataFrame
+                    filtered_data.loc[row] = row_data
+                
+                # Use the filtered data for export
+                df = filtered_data
+            
+            # Check if we have data to export
+            if df is None or df.empty:
+                self.statusBar().showMessage("No data available for export")
+                return
+            
+            # Check export directory
+            export_dir = self.config_manager.get_export_directory()
+            
+            # Create the export directory if it doesn't exist
+            if not os.path.exists(export_dir):
+                Path(export_dir).mkdir(parents=True, exist_ok=True)
+            
+            # Default filename
+            default_filepath = str(Path(export_dir) / f"{current_view.lower().replace(' ', '_')}_export.csv")
+            
+            # Show save dialog
+            file_path, _ = QFileDialog.getSaveFileName(
+                self, "Export Analysis", default_filepath, "CSV Files (*.csv)"
+            )
+            
+            if not file_path:
+                return  # User canceled
+            
+            # Use DataProcessor to write CSV with proper umlaut handling
+            if DataProcessor.write_csv_with_umlauts(df, file_path):
+                self.statusBar().showMessage(f"Analysis data exported to {file_path}")
+            else:
+                QMessageBox.warning(
+                    self,
+                    "Export Error",
+                    "Failed to export data to CSV. See console for details.",
+                    QMessageBox.Ok
+                )
+                
+        except Exception as e:
+            if self.debug:
+                print(f"Error exporting analysis data: {str(e)}")
+                traceback.print_exc()
+            self.statusBar().showMessage(f"Error exporting data: {str(e)}")
+            QMessageBox.warning(
+                self,
+                "Export Error",
+                f"An error occurred while exporting: {str(e)}",
+                QMessageBox.Ok
+            )

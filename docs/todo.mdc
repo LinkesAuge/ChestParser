@@ -1,0 +1,160 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: Todo List for German Umlaut Solution
+globs: *.py
+alwaysApply: false
+---
+# German Umlaut Solution Implementation
+
+## Requirements
+Based on the provided german-umlaut-solution.md, we need to implement a comprehensive solution for handling German umlauts and encoding issues in our CSV processing.
+
+## Todo List
+
+### 1. Dependencies Installation
+- [x] Install required packages: ftfy, charset-normalizer, unidecode, textacy (optional)
+- [x] Update pyproject.toml with new dependencies
+
+### 2. DataProcessor Enhancement
+- [x] Create a new function `fix_encoding` using ftfy
+- [x] Implement the comprehensive `read_csv_with_encoding_fix` function
+- [x] Enhance `load_csv` method to use the new encoding detection and fixing approach
+- [x] Add functions for Unicode normalization
+- [x] Implement pattern-based corrections for common mojibake patterns
+- [x] Add `fix_dataframe_text` function for advanced text processing
+- [x] Create a proper writing function that preserves encodings: `write_csv_with_umlauts`
+
+### 3. Testing and Verification
+- [x] Test the solution with known problematic CSV files
+- [x] Verify that umlauts are correctly preserved
+- [x] Check that mojibake is properly fixed
+- [x] Test both reading and writing functions
+
+### 4. Integration
+- [x] Ensure that MainWindow properly uses the enhanced DataProcessor
+- [x] Update file export functionality to use `write_csv_with_umlauts`
+- [x] Ensure proper error handling for encoding issues
+
+### 5. Documentation
+- [x] Document the changes in app_report.mdc
+- [x] Update memory.mdc with implementation details
+
+### 6. Bug Fixes
+- [x] Fix CSV loading issue with German umlauts ("Failed to load CSV" error)
+- [x] Improve encoding detection for European languages
+- [x] Add comprehensive error handling and debugging
+
+# Chart Tab Enhancement
+
+## Requirements
+We need to improve the Charts tab by addressing redundancy in the "data to show" and "sort by" options, and implementing a more logical selection mechanism.
+
+## Todo List
+
+### 1. Two-Step Data Selection Process
+- [x] Replace old "Data to Show" dropdown with two logical selections
+- [x] Add "Group By" dropdown for dimension selection (PLAYER, CHEST, SOURCE, DATE)
+- [x] Add "Measure" dropdown for metric selection (TOTAL_SCORE, CHEST_COUNT, AVG_SCORE, etc.)
+- [x] Create dynamic UI that updates available measures based on selected dimension
+- [x] Implement dynamic sort options that change based on selected dimension
+
+### 2. Code Refactoring
+- [x] Update setup_charts_tab method to implement the new UI
+- [x] Create new helper methods update_available_measures and update_sort_options
+- [x] Modify update_chart_data_category to work with the Group By selection
+- [x] Update update_chart_data_column to work with the Measure selection
+- [x] Ensure backward compatibility with existing charts code
+
+### 3. Chart Update Logic
+- [x] Modify update_chart method to use the new two-step selection
+- [x] Update chart title formatting to reflect Group By and Measure
+- [x] Ensure proper data selection based on dimension and measure
+- [x] Fix sorting functionality to work with the new structure
+
+### 4. Export Functionality
+- [x] Update save_chart method to work with the new selection process
+- [x] Ensure both image export and data export functions properly
+- [x] Fix CSV/Excel export to use the proper columns based on selections
+
+### 5. Testing and Documentation
+- [x] Document changes in app_report.mdc
+- [x] Update memory.mdc with implementation details
+
+## Progress
+*2024-07-07: Completed Chart Tab Enhancement:*
+- Implemented two-step data selection with Group By and Measure dropdowns
+- Created dynamic measure options that change based on selected dimension
+- Updated chart update logic to use the new selection process
+- Fixed chart export functionality to work with the new structure
+- Maintained backward compatibility with existing code
+- Improved UX by eliminating redundancy in chart data selection
+- Enhanced chart title to reflect the selected dimension and measure
+
+# Consistent Pathlib Implementation
+
+## Requirements
+We need to consistently use the pathlib module throughout the codebase instead of os.path for better path handling.
+
+## Todo List
+
+### 1. Main.py Updates
+- [x] Update create_directories() function to use only Path objects
+- [x] Replace os.path.join and os.path.exists with Path methods
+- [x] Update the icon_path handling to use Path
+
+### 2. ConfigManager Updates
+- [x] Update the ConfigManager class to use Path for directory management
+- [x] Modify load_config() to use Path for file operations
+- [x] Update all path-related methods to use Path objects
+
+### 3. DataProcessor Updates
+- [x] Refactor read_csv_with_encoding_fix() to use Path for file operations
+- [x] Update file_exists checks to use Path.exists()
+- [x] Modify file size checks to use Path.stat().st_size
+
+### 4. Utils.py Updates
+- [x] Update the ConfigManager class to use Path for directory operations
+- [x] Modify path handling functions to use Path objects
+
+### 5. MainWindow Updates
+- [ ] Refactor path handling in load_csv_file() and related methods
+- [ ] Update chart export functionality to use Path
+- [ ] Update file dialog operations to work with Path objects
+
+### 6. Other Modules
+- [ ] Ensure consistent Path usage in ImportArea
+- [ ] Update path operations in any other modules
+
+### 7. Testing and Verification
+- [ ] Test importing CSV files
+- [ ] Verify exporting works properly
+- [ ] Ensure directory creation works correctly
+
+## Progress
+*2024-07-06: Identified areas for pathlib conversion:*
+- Found multiple instances of os.path.join and os.path.exists in main.py
+- Discovered mixed usage of os.path and pathlib in ConfigManager
+- Located file operations in DataProcessor that need conversion
+- Identified multiple path operations in MainWindow class
+
+*2024-07-06: Completed updates to main files:*
+- Updated main.py to use Path objects consistently
+- Converted all path operations in ConfigManager to use Path
+- Updated ConfigManager in utils.py to use Path objects
+- Refactored DataProcessor to use Path for file operations
+- Changed file existence checks to use Path.exists()
+- Modified file size checks to use Path.stat().st_size
+- Consistently handle both str and Path file paths in all methods
+
+*Key reminders:*
+- Replace os.path.join(a, b) with Path(a) / b
+- Replace os.path.exists(path) with Path(path).exists()
+- Replace os.path.abspath(path) with Path(path).absolute()
+- Replace os.makedirs(path, exist_ok=True) with Path(path).mkdir(parents=True, exist_ok=True)
+- Replace os.path.dirname(path) with Path(path).parent
+- Replace os.getcwd() with Path.cwd()
+- Replace os.path.expanduser("~") with Path.home() 

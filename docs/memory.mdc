@@ -9,6 +9,11 @@ globs:
 alwaysApply: false
 ---
 ---
+description: 
+globs: 
+alwaysApply: false
+---
+---
 description: Project Memory
 globs: *.py
 alwaysApply: false
@@ -31,6 +36,13 @@ alwaysApply: false
 - 2024-03-12: Enhanced drag and drop with file extension filtering and visual feedback
 - 2024-03-12: Comprehensive UI refactoring and drag-and-drop implementation
 - 2024-03-13: Enhanced Windows-specific drag and drop compatibility with detailed logging
+- 2024-03-13: Improved German umlaut handling by integrating enhanced DataProcessor methods throughout the application
+- 2024-03-13: Updated `load_csv_file` to use the new `read_csv_with_encoding_fix` function for better umlaut handling
+- 2024-03-13: Added additional text column processing with `fix_dataframe_text` for comprehensive umlaut fixes
+- 2024-03-13: Ensured all CSV exports use the enhanced `write_csv_with_umlauts` function to preserve special characters
+- 2024-03-13: Fixed CSV loading issue by prioritizing Windows-1252 encoding for German text
+- 2024-03-13: Enhanced error handling and debugging for CSV loading to better diagnose encoding issues
+- 2024-03-13: Improved encoding detection to use a fixed priority list favoring cp1252 for German characters
 - 2024-03-14: Implemented alternative file import methods with menu bar and button to provide reliable import options beyond drag and drop
 - 2024-03-14: Simplified and enhanced drag and drop implementation with more permissive event acceptance and improved file path handling
 - 2024-03-15: Fixed crossed-out red icon issue during drag operations by enhancing drag event handling
@@ -172,40 +184,63 @@ alwaysApply: false
 - 2024-07-05: Enhanced character correction with context-sensitive approach using common letter adjacency in German
 - 2024-07-05: Improved handling of replacement characters based on surrounding character context
 - 2024-07-05: Added multi-pass correction strategy with prefix/suffix analysis for more accurate umlaut placement
+- 2024-07-06: Refactored file path handling to consistently use pathlib throughout the codebase:
+- 2024-07-06: Replaced os.path.join() with Path() / operator for improved path construction
+- 2024-07-06: Updated file existence checks to use Path.exists() instead of os.path.exists()
+- 2024-07-06: Converted file size checks to use Path.stat().st_size instead of os.path.getsize()
+- 2024-07-06: Updated directory creation to use Path.mkdir(parents=True, exist_ok=True) instead of os.makedirs()
+- 2024-07-06: Replaced os.path.expanduser("~") with Path.home() for better cross-platform compatibility
+- 2024-07-06: Updated os.getcwd() with Path.cwd() for consistent path handling
+- 2024-07-06: Enhanced file operation functions to accept both string and Path objects
+- 2024-07-06: Improved ConfigManager path handling to use Path objects consistently
+- 2024-07-06: Updated DataProcessor file operations to use pathlib properly
 
 ## Current Tasks
-- UI Layout Improvements:
-  - Fixed issue in the Raw Data and Analysis tabs where filter/view options didn't use full vertical space
-  - Fixed issue in the Charts tab where an empty section was displayed instead of using the full space for charts
-  - Fixed issue where deselecting "Select specific values" checkbox would change the layout of the filter box
-  - Reorganized chart controls to properly separate:
-    - Chart types (Bar Chart, Horizontal Bar, Pie Chart, Line Chart)
-    - Data categories (Player Totals, Chest Totals, Source Totals, Date Totals)
-    - Data columns (SCORE, CHEST_COUNT, TOTAL_SCORE)
-  - Fixed sorting logic when limiting results to ensure proper order with top N items
-  - Added comprehensive chart customization options including:
-    - Sorting options by column and direction
-    - Results limiting with top N control
-    - Display options for value labels and grid lines
-    - Chart saving functionality with multiple format support
-  - Enhanced chart UI with logical grouping of related controls:
-    - Added explanatory text to clarify relationships between controls
-    - Organized controls into functional groups with clear labels
-    - Improved layout of related controls like checkboxes and their settings
-  - Added data export functionality for Excel/Google Sheets:
-    - Added CSV export option
-    - Added Excel XLSX export with fallback to CSV
-    - Added export type selection dialog
-  - Implemented proper widget size policies for better space utilization
-  - Used stretch factors to optimize vertical space in layouts
-  - Redesigned Charts tab with horizontal splitter layout (controls on left, chart on right)
-  - Simplified data selection by automating data column choice based on data category
+- Fixed CHEST_COUNT measure in Charts tab:
+  - Problem: CHEST_COUNT measure wasn't working for CHEST, SOURCE, and DATE dimensions
+  - Root cause: Only Player Totals dataset had a CHEST_COUNT column in the original implementation
+  - Solution: Modified DataProcessor.analyze_data to include CHEST_COUNT in all datasets at creation time
+  - Added consistent CHEST_COUNT columns to all datasets (chest_totals, source_totals, date_totals)
+  - Simplified the measure-to-column mapping logic to use direct column names
+  - Added detailed debug output to verify column presence and values
+  - Removed dynamic column creation that was causing issues
+  - Enhanced the user experience by ensuring all dimensions can display chest counts correctly
+
+- UI Usability Improvements (2024-07-14):
+  - Enhanced Charts Tab consistency:
+    - Made all chart controls (sorting, limiting, display options) update the chart immediately
+    - Removed the redundant "Apply Options" button since it's no longer needed
+    - Connected signals for all controls to update_chart method for real-time updates
+  - Improved UI controls visibility and usability:
+    - Enlarged spinbox up/down buttons throughout the application (20px width, 15px height)
+    - Added hover effects to spinbox buttons for better user feedback
+    - Applied consistent button styling across all spinboxes in the application
+  - Enhanced Tab navigation logic:
+    - Made tabs other than Import non-clickable until a CSV file is successfully loaded
+    - Added greyed-out styling for disabled tabs (#666666 text color)
+    - Implemented enable_all_tabs and disable_tabs_except_import methods
+    - Ensured theme is reapplied when tabs are enabled for consistent styling
+  - Added better status bar feedback with file name display on successful load
+
+- Implemented Two-Step Data Selection Process in Charts tab:
+  - Replaced single "Data to Show" dropdown with more logical Group By + Measure selections
+  - Added "Group By" dropdown for dimension selection (PLAYER, CHEST, SOURCE, DATE)
+  - Added "Measure" dropdown for metric selection (TOTAL_SCORE, CHEST_COUNT, AVG_SCORE)
+  - Created dynamic UI that updates available measures based on selected dimension
+  - Implemented dynamic sort options that change based on selected dimension
+  - Maintained backward compatibility with existing chart code
+  - Updated chart title to reflect selected dimension and measure
+  - Fixed all export functionalities to work with the new selection process
+  - Enhanced UX by eliminating redundancy in chart data selection
 
 ## Dependencies
 - PySide6: 6.8.2.1
 - matplotlib: 3.10.1
 - pandas: 2.2.3
 - numpy: 1.26.4
+- ftfy: 6.1.3 (new)
+- charset-normalizer: 3.3.2 (new)
+- unidecode: 1.3.7 (new)
 
 ## Notes
 - The application uses a dark blue and gold theme inspired by the Total Battle game
@@ -219,11 +254,15 @@ alwaysApply: false
 - The theme application has been enhanced to ensure consistent styling throughout the application
 - Windows visibility issues have been addressed with proper window activation
 - The application now uses UV with pyproject.toml for dependency management instead of pip with requirements.txt
+  - IMPORTANT: Always use `uv add package_name` to add new dependencies to the project
+  - For installing the project in development mode, use `uv pip install -e .`
+  - Do NOT use `pip` for package management in this project
 - The new Report tab provides comprehensive analysis with HTML/PDF export capabilities
 - Chart functionality now includes 3D visualizations with bubble charts showing efficiency metrics
 - Efficiency calculations (points per chest) provide additional insights into player performance
 - Filter areas now use full vertical space for better usability when selecting values
 - Charts tab has enhanced customization options and better space utilization
+- The application now uses pathlib consistently for file and directory operations, which improves cross-platform compatibility
 
 ## 2024-06-01: Added Report Tab
 - Implemented a new Report tab with comprehensive reporting capabilities

@@ -97,6 +97,15 @@ class StyleManager:
                 border-color: {DARK_THEME['accent']};
             }}
             
+            QSpinBox::up-button, QSpinBox::down-button {{
+                width: 20px;
+                height: 15px;
+            }}
+            
+            QSpinBox::up-button:hover, QSpinBox::down-button:hover {{
+                background-color: {DARK_THEME['accent']};
+            }}
+            
             QComboBox::drop-down {{
                 border: none;
                 width: 20px;

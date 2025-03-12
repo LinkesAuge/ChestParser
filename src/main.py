@@ -27,12 +27,13 @@ from modules.mainwindow import MainWindow
 
 def create_directories():
     """Create necessary directories for the application."""
-    # Create import/export directories
-    import_dir = Path('imports')
-    export_dir = Path('exports')
+    # Create data directory and subdirectories
+    data_dir = Path('data')
+    import_dir = Path('data/imports')
+    export_dir = Path('data/exports')
     temp_dir = Path('temp')
     
-    for directory in [import_dir, export_dir, temp_dir]:
+    for directory in [data_dir, import_dir, export_dir, temp_dir]:
         if not directory.exists():
             try:
                 directory.mkdir(parents=True)
@@ -76,24 +77,19 @@ def main():
         app.setOrganizationName("TotalBattleTools")
         
         # Set application icon
-        icon_path = os.path.join(os.path.dirname(__file__), 'resources', 'icon.png')
-        if os.path.exists(icon_path):
-            app.setWindowIcon(QIcon(icon_path))
+        icon_path = Path(__file__).parent / 'resources' / 'icon.png'
+        if icon_path.exists():
+            app.setWindowIcon(QIcon(str(icon_path)))
         
         # Create main window
         main_window = MainWindow("Total Battle Analyzer")
         
         # Apply theme based on configuration
         theme = main_window.config_manager.get_theme()
-        if theme == "dark":
-            StyleManager.apply_dark_theme(app)
-        else:
-            StyleManager.apply_light_theme(app)
-        
+        StyleManager.apply_dark_theme(app)
         # Show main window
         main_window.show()
-        
-        # Start the event loop
+
         sys.exit(app.exec())
         
     except Exception as e:

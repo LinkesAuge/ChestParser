@@ -1,4 +1,9 @@
 ---
+description: 
+globs: 
+alwaysApply: false
+---
+---
 description: Total Battle Analyzer - Application Report
 globs: *.py
 alwaysApply: false
@@ -71,11 +76,13 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
   - Dynamically generates visualizations based on data selection
   - Uses Total Battle-inspired color palette with gold and blue tones
 - **Enhanced Chart Customization**:
-  - Separate chart type selection from data category selection
+  - Two-step data selection process for improved logical organization:
+    - Group By dimension selector (PLAYER, CHEST, SOURCE, DATE)
+    - Measure value selector (TOTAL_SCORE, CHEST_COUNT, AVG_SCORE)
+  - Dynamic measure options that change based on selected Group By dimension
+  - Dynamic sorting options that update based on selected dimension
   - Chart types include: Bar Chart, Horizontal Bar, Pie Chart, Line Chart
-  - Data categories include: Player Totals, Chest Totals, Source Totals, Date Totals
   - Intuitive UI with logical control grouping in a side panel layout
-  - Automatic data value selection based on category (e.g., SCORE for Player Totals)
   - Sorting options by any column with proper ascending/descending logic
   - Limit results to top N items with proper sorting order application
   - Show/hide value labels and grid lines
@@ -123,8 +130,8 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
 - **Error handling**: Graceful error management with user-friendly messages
 - **Cross-platform compatibility**: Windows-specific optimizations
 - **Standardized File Organization**:
-  - Uses 'imports' directory for loading data files
-  - Uses 'exports' directory for saving all generated content
+  - Uses 'data/imports' directory for loading data files
+  - Uses 'data/exports' directory for saving all generated content
   - Saves console output to 'log.txt' for troubleshooting
   - Maintains data integrity with automatic directory creation
 
@@ -140,9 +147,57 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
 - PySide6: 6.8.2.1 (Qt-based GUI framework)
 - matplotlib: 3.10.1 (Visualization library) 
 - pandas: 2.2.3 (Data analysis library)
+- ftfy: 6.1.3 (Fixes text encoding issues)
+- charset-normalizer: 3.3.2 (Encoding detection)
+- unidecode: 1.3.7 (Transliteration for fallback)
 - Python standard libraries: pathlib, datetime, csv, etc.
 
 ## Recent Changes
+- **2024-07-15: Fixed Raw Data Tab Export Bug**
+  - Fixed issue where the Export to CSV button in the Raw Data tab wasn't working
+  - Implemented proper proxy model for the Raw Data tab to match the Analysis tab
+  - Updated filter handling to work correctly with the proxy model
+  - Ensured consistent export functionality between Raw Data and Analysis tabs
+  - Improved error handling and feedback throughout the export process
+  - Made both tabs use the same sorting and filtering infrastructure
+
+- **2024-07-15: Enhanced Export Functionality**
+  - Added Export to CSV functionality for both Raw Data and Analysis tabs
+  - Added Export buttons at the bottom of filter panels for easy access
+  - Implemented export of filtered data to preserve user's current view
+  - Ensured proper handling of German umlauts in exported CSV files
+  - Added comprehensive error handling and user feedback
+  - Made export functionality consistent across all tabs (Raw Data, Analysis, Charts)
+
+- **2024-07-14: UI Usability Improvements**
+  - Made all chart controls update the chart immediately without requiring the "Apply Changes" button
+  - Enlarged spinbox up/down buttons throughout the application for better visibility and usability
+  - Made tabs other than Import non-clickable until a CSV file is successfully loaded
+  - Applied consistent styling to spinbox buttons across the entire application
+  - Added hover effects to spinbox buttons for better user feedback
+  - Improved the tab disabling visual feedback with greyed-out styling
+  - Enhanced status bar messages to show the loaded file name
+- Redesigned Charts tab with an improved Two-Step Data Selection Process:
+  - Replaced the old single-step "Data to Show" dropdown with two logical selections:
+    - "Group By" dimension selector (PLAYER, CHEST, SOURCE, DATE)
+    - "Measure" value selector (TOTAL_SCORE, CHEST_COUNT, AVG_SCORE, etc.)
+  - Enhanced sorting options based on selected Group By dimension
+  - Added dynamic measure options that change based on selected Group By dimension
+  - Maintained all chart export functionality (image and data exports)
+  - Improved usability by eliminating redundancy in chart data selection
+  - Enhanced chart title to reflect the selected dimension and measure
+  - Fixed visual layout and spacing for better experience
+- Refactored path handling throughout the codebase to consistently use pathlib:
+  - Replaced os.path.join with pathlib's / operator for path construction
+  - Updated file existence checks to use Path.exists()
+  - Converted file size checks to use Path.stat().st_size
+  - Replaced os.path.abspath with Path.absolute()
+  - Updated os.makedirs with Path.mkdir(parents=True, exist_ok=True)
+  - Replaced os.path.dirname with Path.parent
+  - Updated os.getcwd() with Path.cwd()
+  - Replaced os.path.expanduser("~") with Path.home()
+  - Improved handling by accepting both string and Path objects in file operation functions
+  - Made path handling more robust and platform-independent
 - Fixed critical bugs:
   - Resolved issue with Analysis tab showing raw data instead of properly analyzed data
   - Fixed duplicate update_analysis_view method that was overriding the correct implementation
@@ -232,3 +287,16 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
   - Enhanced label positioning and formatting
   - Added bold text for better readability of chart values
   - Fixed layout changes when toggling "Select specific values" checkbox to maintain static layout
+- Implemented comprehensive German umlaut handling with ftfy and charset-normalizer
+- Added multi-tiered approach to encoding detection and character fixing
+- Implemented pattern-based replacement for common mojibake patterns in German text
+- Enhanced CSV export to preserve special characters with proper UTF-8 encoding
+- Added detailed debug logging for text encoding processing
+- Implemented Unicode normalization for consistent text representation
+- Added fallback mechanisms using transliteration when encoding cannot be properly determined
+- Improved integration of German umlaut handling throughout the application
+- Updated CSV file loading to use enhanced encoding detection and text fixing
+- Applied comprehensive text column processing for all imported data
+- Ensured all CSV exports properly preserve special characters
+- Fixed an issue with CSV reading where umlauts could be improperly detected
+- Enhanced error handling for CSV loading and exporting operations

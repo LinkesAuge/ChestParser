@@ -122,11 +122,11 @@ class ConfigManager:
         """
         self.app_name = app_name
         self.config = {}
-        self.config_dir = os.path.join(os.path.expanduser("~"), f".{app_name.lower()}")
-        self.config_file = os.path.join(self.config_dir, "config.json")
+        self.config_dir = Path.home() / f".{app_name.lower()}"
+        self.config_file = self.config_dir / "config.json"
         
         # Create config directory if it doesn't exist
-        os.makedirs(self.config_dir, exist_ok=True)
+        self.config_dir.mkdir(parents=True, exist_ok=True)
         
         # Load the configuration
         self.load_config()
@@ -145,8 +145,8 @@ class ConfigManager:
         'window_size': (1200, 800),
         'recent_files': [],
         'max_recent_files': 5,
-        'import_dir': os.path.join(os.getcwd(), 'import'),
-        'export_dir': os.path.join(os.getcwd(), 'exports'),
+        'import_dir': str(Path.cwd() / 'data' / 'imports'),
+        'export_dir': str(Path.cwd() / 'data' / 'exports'),
         'encodings': ['utf-8', 'latin1', 'cp1252', 'iso-8859-1', 'windows-1252', 'utf-8-sig']
         }
         
@@ -250,7 +250,7 @@ class ConfigManager:
         Args:
         directory (str): The directory path.
         """
-        self.config['import_dir'] = directory
+        self.config['import_dir'] = str(directory)
         self.save_config()
     
     def get_import_directory(self):
@@ -260,7 +260,7 @@ class ConfigManager:
         Returns:
         str: The import directory path.
         """
-        return self.config.get('import_dir', os.path.join(os.getcwd(), 'import'))
+        return self.config.get('import_dir', str(Path.cwd() / 'data' / 'imports'))
     
     def set_export_directory(self, directory):
         """
@@ -269,7 +269,7 @@ class ConfigManager:
         Args:
         directory (str): The directory path.
         """
-        self.config['export_dir'] = directory
+        self.config['export_dir'] = str(directory)
         self.save_config()
     
     def get_export_directory(self):
@@ -279,5 +279,5 @@ class ConfigManager:
         Returns:
         str: The export directory path.
         """
-        return self.config.get('export_dir', os.path.join(os.getcwd(), 'exports'))
+        return self.config.get('export_dir', str(Path.cwd() / 'data' / 'exports'))
 

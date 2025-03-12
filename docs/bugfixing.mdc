@@ -9,6 +9,11 @@ globs:
 alwaysApply: false
 ---
 ---
+description: 
+globs: 
+alwaysApply: false
+---
+---
 description: Bug Fixing Log
 globs: *.py
 alwaysApply: false
@@ -2540,3 +2545,43 @@ The previous approach was too incremental, with multiple layers of fixes that so
 Completely redesigned the entire character encoding handling system from the ground up with a more systematic and comprehensive approach:
 
 1. **Improved Encoding Detection**
+```
+
+### 2024-03-13: Fixed CSV Loading Issue with German Umlauts
+
+**Issue:** 
+The application was failing to load CSV files with German umlauts, showing a "Failed to load CSV" error.
+
+**Root Cause:**
+The encoding detection logic was starting with UTF-8 as the default encoding, but some CSV files with German characters were encoded in Windows-1252 (cp1252) format. The UTF-8 decoder was failing when encountering bytes like 0xfc which are valid in cp1252 but invalid in UTF-8.
+
+**Solution:**
+1. Modified the `read_csv_with_encoding_fix` method to prioritize Windows-1252 encoding:
+   ```python
+   # IMPORTANT: For German text, prioritize Windows-1252 encoding
+   # This is more reliable than trying to detect the encoding
+   encodings_to_try = ['cp1252', 'latin1', 'utf-8', 'iso-8859-1', 'windows-1252']
+   ```
+
+2. Removed the automatic encoding detection step, which was less reliable for German text, and instead used a fixed priority list of encodings to try.
+
+3. Added more comprehensive error handling and debug logging to diagnose encoding issues.
+
+**Verification:**
+Successfully loaded CSV files containing German umlauts, and verified that characters like 'ä', 'ö', and 'ü' display correctly in the application.
+
+**Additional Notes:**
+Windows-1252 (cp1252) encoding is widely used in Windows systems for European languages, including German, and reliably handles umlauts and other special characters. It should be the first choice when dealing with CSV files that may contain German text.
+
+## CHEST_COUNT Measure Fix
+- **Issue:** The CHEST_COUNT measure was not working properly in the charts tab for CHEST, SOURCE, and DATE dimensions.
+- **Cause:** In the analysis results, only Player Totals had a "CHEST_COUNT" column, while other datasets used "COUNT" or didn't have a count column at all.
+- **Fix:**
+  1. Modified the `update_chart` method to add a CHEST_COUNT column to each dataset:
+     - For Chest Totals: Renamed the existing "COUNT" column to "CHEST_COUNT"
+     - For Source Totals: Created a new count by grouping raw data by SOURCE
+     - For Date Totals: Created a new count by grouping raw data by DATE
+  2. Updated the `update_chart_data_column` method to consistently use "CHEST_COUNT" as the column name 
+  3. Applied the same fixes to the `save_chart` method for data export
+  4. Added more detailed debug logging to help diagnose similar issues
+- **Verification:** The CHEST_COUNT measure now works properly for all dimensions in both visualization and data export.
