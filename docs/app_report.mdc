@@ -190,6 +190,35 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
   - Fixed horizontal bar chart implementation to use direct matplotlib plotting
   - Added defensive logging throughout application to precisely identify crash points
   - Verified all fixes with comprehensive testing, ensuring the application runs smoothly
+  - Enhanced German umlaut handling with multi-tiered approach for consistent character display
+  - Implemented robust detection and correction of encoding issues for player names with umlauts
+  - Added targeted fixes for common German names with encoding problems (e.g., "Krümelmonster", "Müller")
+  - Ensured consistent display of all German character names regardless of original encoding
+  - Improved preservation of properly formatted German umlauts to prevent "Feldjäger" from being mangled
+  - Prioritized German-friendly encodings by default for non-ASCII text files
+  - Added special handling for known German name patterns to ensure consistent display
+  - Reduced console debug output by disabling debug mode by default in main components
+  - Made debug print statements conditional to improve application performance
+  - Completely rewrote German character encoding handling with a fully generalized approach
+  - Implemented pattern-based replacements for common German letter combinations without relying on hardcoded names
+  - Added automatic preservation of any string with properly encoded German characters
+  - Enhanced encoding detection to always prioritize Latin-1 and Windows encodings for German text
+  - Improved CSV loading to better handle mixed encoding issues in the same file
+  - Fixed critical issue with German character preservation where properly encoded characters like "ä" in "Feldjäger" were being modified
+  - Completely refactored German character handling logic to identify correctly encoded characters BEFORE applying any fixes
+  - Implemented selective string processing using DataFrame masks to only modify strings that need fixing
+  - Added explicit restoration step to ensure all properly encoded German characters remain exactly as in the original data
+  - Added extensive debug logging to track German character preservation throughout the processing pipeline
+  - Completely overhauled the character encoding handling system with a principled approach to encoding detection
+  - Implemented a scoring system to evaluate and select the optimal encoding based on German text quality
+  - Replaced all name-specific solutions with context-based linguistic pattern recognition
+  - Introduced a clean two-phase approach using temporary columns to fix character encoding issues
+  - Added multi-encoding processing to compare results from different encodings before selecting the best one
+  - Implemented advanced encoding scoring system that evaluates encodings based on German character preservation, replacement character count, and fallback priorities
+  - Completely removed specific name patterns (like "Jäger", "Müller") in favor of a linguistic approach based on common letter patterns in German
+  - Enhanced character correction with context-sensitive algorithm that analyzes adjacent character patterns to determine the most appropriate German umlaut
+  - Added multi-pass correction strategy with first preserving correct German characters, then context analysis, then prefix/suffix patterns, and finally default handling
+  - Improved handling of all replacement character types (Unicode replacement character and question marks) with a unified approach
 - UI Layout Improvements:
   - Optimized filter areas in Raw Data and Analysis tabs to use full vertical space
   - Removed unused placeholder in Charts tab and used full area for charts

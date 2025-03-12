@@ -54,13 +54,13 @@ class MainWindow(QMainWindow):
     Provides functionality for importing, filtering, and visualizing chest data.
     """
     
-    def __init__(self, title="Total Battle Analyzer", debug=True):
+    def __init__(self, title="Total Battle Analyzer", debug=False):
         """
         Initialize the main window.
         
         Args:
             title (str, optional): Window title. Defaults to "Total Battle Analyzer".
-            debug (bool, optional): Enable debug output. Defaults to True.
+            debug (bool, optional): Enable debug output. Defaults to False.
         """
         super().__init__()
         

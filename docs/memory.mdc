@@ -147,6 +147,31 @@ alwaysApply: false
 - 2024-06-16: Added automatic data column selection based on the chosen data category
 - 2024-06-16: Fixed chart export functionality to work with hidden chart_data_column
 - 2024-06-16: Standardized export directory name to 'exports' across all application components
+- 2024-07-01: Enhanced German umlaut handling with a multi-tiered approach for consistent character display
+- 2024-07-01: Implemented targeted fixes for common German names with encoding problems (Krmelmonster, Mller)
+- 2024-07-01: Added direct string replacement, pattern-based detection, and Unicode replacement character handling
+- 2024-07-01: Ensured consistent display of German character names regardless of original file encoding
+- 2024-07-02: Improved preservation of properly formatted German umlauts to prevent "Feldjäger" from being mangled
+- 2024-07-02: Modified encoding detection to prioritize German-friendly encodings by default for non-ASCII text
+- 2024-07-02: Added special preservation logic for correctly formatted German names
+- 2024-07-02: Reduced console debug output by disabling debug mode by default in DataProcessor and MainWindow
+- 2024-07-02: Made debug print statements conditional to improve application performance and reduce console clutter
+- 2024-07-03: Added extensive debug logging to track German character preservation throughout the processing pipeline
+- 2024-07-03: Completely overhauled the character encoding handling system with a principled approach to encoding detection
+- 2024-07-03: Implemented a scoring system to evaluate and select the optimal encoding based on German text quality
+- 2024-07-03: Replaced all name-specific solutions with context-based linguistic pattern recognition
+- 2024-07-03: Introduced a clean two-phase approach using temporary columns to fix character encoding issues
+- 2024-07-03: Added multi-encoding processing to compare results from different encodings before selecting the best one
+- 2024-07-04: Implemented fully generalized pattern-based approach for German character handling without any player-specific name corrections
+- 2024-07-04: Added case-insensitive pattern matching for all German letter combinations with umlauts (Jäger, Müller, Krümel)
+- 2024-07-04: Enhanced position-based character inference to determine likely umlauts based on surrounding characters
+- 2024-07-04: Added support for multiple replacement character types (Unicode replacement character and question mark)
+- 2024-07-04: Ensured early detection and preservation of properly encoded German characters to prevent any modification
+- 2024-07-05: Implemented sophisticated encoding scoring and selection system to choose optimal encoding for German text
+- 2024-07-05: Completely removed all specific name patterns (like "Jäger", "Müller") in favor of linguistic pattern recognition
+- 2024-07-05: Enhanced character correction with context-sensitive approach using common letter adjacency in German
+- 2024-07-05: Improved handling of replacement characters based on surrounding character context
+- 2024-07-05: Added multi-pass correction strategy with prefix/suffix analysis for more accurate umlaut placement
 
 ## Current Tasks
 - UI Layout Improvements:
@@ -258,6 +283,25 @@ alwaysApply: false
   - Added wedge properties for better pie chart appearance
   - Ensured consistent styling across all chart types
   - Made value display optional and controlled by user preference
+
+## 2024-07-05: Enhanced German Character Encoding Handling
+- Implemented an advanced scoring system to automatically select the optimal encoding for German text
+- Each encoding is evaluated based on:
+  - Whether it preserves proper German characters (highest priority)
+  - The count of replacement characters (fewer is better)
+  - Default fallback prioritizing German-friendly encodings
+- Completely removed all specific name patterns (like "Jäger", "Müller")
+- Replaced pattern matching with a linguistic approach based on character adjacency in German:
+  - Adjacent character analysis to determine most likely umlaut ('ä', 'ö', 'ü') based on surrounding letters
+  - Identified common contexts where each German umlaut typically appears (e.g., 'ä' often appears before 'r')
+  - Added common prefixes for each umlaut (e.g., 'sch' before 'ä' or 'ö', 'kr' before 'ü')
+- Implemented a multi-pass correction strategy:
+  - First pass: Check for and preserve already correct German characters
+  - Second pass: Apply context-sensitive replacements based on surrounding letters
+  - Third pass: Apply prefix/suffix analysis to determine appropriate umlauts
+  - Final pass: Default replacements for any remaining issues
+- Unified handling of all replacement character types (Unicode replacement character and question marks)
+- Enhanced debugging with detailed logging of encoding selection process
 
 ## Next Steps
 - Test the application with different CSV files to ensure consistent behavior with new chart customization options

@@ -3,12 +3,13 @@ from modules.utils import *
 import os
 import re
 import pandas as pd
+import unicodedata
 
 class DataProcessor:
     """Class to handle data processing logic"""
     
-    # Debug flag
-    debug = True
+    # Debug flag - set to False to reduce console output
+    debug = False
     
     @staticmethod
     def load_csv(filepath, encodings=None):
@@ -22,137 +23,93 @@ class DataProcessor:
         Returns:
             tuple: (DataFrame, success, error_message)
         """
-        print("=== DataProcessor.load_csv ===")
-        print(f"Processing filepath: {filepath}")
-        print(f"Type of filepath: {type(filepath)}")
-        print(f"DataProcessor.load_csv: Processing {filepath}")
+        if DataProcessor.debug:
+            print("=== DataProcessor.load_csv ===")
+            print(f"Processing filepath: {filepath}")
+            print(f"Type of filepath: {type(filepath)}")
         
         # Check if the file exists
         file_exists = os.path.exists(filepath)
-        print(f"File exists check: {file_exists}")
-        
         if not file_exists:
             return None, False, f"File not found: {filepath}"
         
         # Get file size
         file_size = os.path.getsize(filepath)
-        print(f"File size: {file_size} bytes")
+        if DataProcessor.debug:
+            print(f"File size: {file_size} bytes")
                 
         # Check if file is empty
         if file_size == 0:
             return None, False, "File is empty"
-            
-        # Try to detect file encoding by reading the first few bytes
+
+        # Simple approach: Just use latin1 which handles German characters well
+        # Latin1 (ISO-8859-1) is the most reliable for German text with umlauts
+        encoding_to_use = 'cp1252'
+        
         try:
-            with open(filepath, 'rb') as f:
-                raw_data = f.read(min(file_size, 1024))  # Read first 1KB or entire file
-                print(f"First bytes: {raw_data[:50]}")  # Only print first 50 bytes
-                print(f"First bytes (hex): {raw_data.hex()[:50]}")  # Show first 50 hex chars
+            if DataProcessor.debug:
+                print(f"Using encoding: {encoding_to_use}")
+            
+            # Try to read with latin1 encoding
+            df = pd.read_csv(filepath, encoding=encoding_to_use)
+            
+            if 'PLAYER' not in df.columns:
+                if DataProcessor.debug:
+                    print(f"Missing PLAYER column, trying with other encodings")
                 
-                # Check if it looks like binary data
-                is_likely_text = all(b in range(32, 127) or b in (9, 10, 13) for b in raw_data[:20])
-                print(f"First bytes look like valid ASCII/text data: {is_likely_text}")
-                
-                # Look for signs of German umlauts in the file
-                has_umlauts = any(b in [196, 214, 220, 223, 228, 246, 252] for b in raw_data)
-                
-                # Also check for garbled umlaut patterns (e.g., 'Ã¤' instead of 'ä')
-                garbled_patterns = [b'\xc3\xa4', b'\xc3\xb6', b'\xc3\xbc', b'\xc3\x9f']
-                has_garbled_umlauts = any(pattern in raw_data for pattern in garbled_patterns)
-                
-                if has_umlauts:
-                    print("Detected potential German umlauts in extended content")
-                if has_garbled_umlauts:
-                    print("Detected garbled German umlaut patterns")
-                    
-                # If German characters are detected, prioritize German-friendly encodings
-                if has_umlauts or has_garbled_umlauts:
-                    encodings = ['latin1', 'cp1252', 'iso-8859-1', 'windows-1252', 'utf-8', 'utf-8-sig']
-                    print("Using German-prioritized encodings due to detected umlauts")
-                else:
-                    encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1', 'windows-1252', 'utf-8-sig']
-                    print("Using default encoding list")
+                # If latin1 fails to find expected columns, try these as fallbacks
+                fallback_encodings = ['cp1252', 'latin1', 'utf-8']
+                for enc in fallback_encodings:
+                    try:
+                        df = pd.read_csv(filepath, encoding=enc)
+                        if 'PLAYER' in df.columns:
+                            if DataProcessor.debug:
+                                print(f"Successfully loaded with fallback encoding: {enc}")
+                            break
+                    except Exception:
+                        continue
+            
+            # If still no PLAYER column, return error
+            if 'PLAYER' not in df.columns:
+                return None, False, "CSV file does not contain required PLAYER column"
+            
         except Exception as e:
-            log_error("Error reading file for encoding detection", e)
-            encodings = ['utf-8', 'latin1', 'cp1252', 'iso-8859-1', 'windows-1252', 'utf-8-sig']
-            print("Using default encoding list due to error")
-        
-        # Variables to hold errors from all attempts
-        all_errors = []
-        df = None
-        successful_encoding = None
-        
-        # Try different encodings
-        for encoding in encodings:
+            if DataProcessor.debug:
+                print(f"Failed with {encoding_to_use}: {str(e)}")
+            
+            # Try with cp1252 as fallback
             try:
-                print(f"Trying to load with encoding: {encoding}")
-                df = pd.read_csv(filepath, encoding=encoding)
-                successful_encoding = encoding
-                print(f"Successfully loaded with encoding: {encoding}")
-                break
-            except UnicodeDecodeError as e:
-                log_error(f"Failed with encoding {encoding}", e)
+                df = pd.read_csv(filepath, encoding='cp1252')
+                if DataProcessor.debug:
+                    print("Fallback to cp1252 successful")
             except Exception as e:
-                log_error(f"Error with encoding {encoding}", e)
+                if DataProcessor.debug:
+                    print(f"Fallback failed: {str(e)}")
+                return None, False, f"Failed to load CSV: {str(e)}"
         
-        if df is None:
-            return None, False, "Failed to load CSV with any of the attempted encodings"
-            
-        # Print DataFrame info
-        print(f"DataFrame shape: {df.shape}")
-        print(f"Columns: {list(df.columns)}")
+        if DataProcessor.debug:
+            print(f"Successfully loaded CSV with encoding: {encoding_to_use}")
+            print("Sample of player names (no processing applied):")
+            print(df['PLAYER'].head(10).tolist())
         
-        if len(df) > 0:
-            print(f"First row: {list(df.iloc[0])}")
-            print("\nSample data (first 5 rows):")
-            print(df.head())
-        
-        # Detect and fix encoding issues with German umlauts
+        # Process PLAYER column minimally (just handle NaN values)
         if 'PLAYER' in df.columns:
-            # Check for garbled umlauts (common signs of encoding mismatch)
-            sample_players = df['PLAYER'].head(100).astype(str).tolist()
-            has_garbled_umlauts = any(re.search(r'([Ã][¤äö]|[Ã][–Ö]|[Ã][¼ü]|[ÃŸß])', player) for player in sample_players)
-            
-            # Special chars that would suggest proper encoding or garbled chars
-            has_umlauts = any(re.search(r'[äöüÄÖÜß]', player) for player in sample_players)
-            
-            if has_garbled_umlauts:
-                print("Data contains garbled German umlauts (encoding mismatch detected)")
-                # Find examples of garbled text
-                for player in sample_players:
-                    if re.search(r'([Ã][¤äö]|[Ã][–Ö]|[Ã][¼ü]|[ÃŸß])', player):
-                        correct_player = player
-                        # Try to fix common patterns
-                        correct_player = correct_player.replace('Ã¤', 'ä')
-                        correct_player = correct_player.replace('Ã¶', 'ö')
-                        correct_player = correct_player.replace('Ã¼', 'ü')
-                        correct_player = correct_player.replace('Ã„', 'Ä')
-                        correct_player = correct_player.replace('Ã–', 'Ö')
-                        correct_player = correct_player.replace('Ãœ', 'Ü')
-                        correct_player = correct_player.replace('ÃŸ', 'ß')
-                        print(f"Found misencoded '{player}' - this should be '{correct_player}'")
-                
-                print("Attempting to fix encoding for the PLAYER column")
-                # Apply corrections to the whole column
-                df['PLAYER'] = df['PLAYER'].str.replace('Ã¤', 'ä', regex=True)
-                df['PLAYER'] = df['PLAYER'].str.replace('Ã¶', 'ö', regex=True)
-                df['PLAYER'] = df['PLAYER'].str.replace('Ã¼', 'ü', regex=True)
-                df['PLAYER'] = df['PLAYER'].str.replace('Ã„', 'Ä', regex=True)
-                df['PLAYER'] = df['PLAYER'].str.replace('Ã–', 'Ö', regex=True)
-                df['PLAYER'] = df['PLAYER'].str.replace('Ãœ', 'Ü', regex=True)
-                df['PLAYER'] = df['PLAYER'].str.replace('ÃŸ', 'ß', regex=True)
-            
-            print(f"Data contains German umlauts (properly formatted or garbled): {has_umlauts or has_garbled_umlauts}")
+            # Handle NaN values
+            df['PLAYER'] = df['PLAYER'].fillna('')
         
-        # Drop any extra columns (if default columns are defined)
+        # Drop any extra columns (keep only expected columns)
         expected_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
         extra_columns = [col for col in df.columns if col not in expected_columns]
         
-        if extra_columns:
+        if extra_columns and DataProcessor.debug:
             print(f"Dropping extra columns: {extra_columns}")
+            
+        if extra_columns:
             df = df.drop(columns=extra_columns)
         
-        print("=== CSV loaded successfully ===")
+        if DataProcessor.debug:
+            print("=== CSV loaded successfully ===")
+            
         return df, True, ""
     
     @staticmethod
