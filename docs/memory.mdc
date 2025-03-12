@@ -196,42 +196,24 @@ alwaysApply: false
 - 2024-07-06: Updated DataProcessor file operations to use pathlib properly
 
 ## Current Tasks
-- Fixed CHEST_COUNT measure in Charts tab:
-  - Problem: CHEST_COUNT measure wasn't working for CHEST, SOURCE, and DATE dimensions
-  - Root cause: Only Player Totals dataset had a CHEST_COUNT column in the original implementation
-  - Solution: Modified DataProcessor.analyze_data to include CHEST_COUNT in all datasets at creation time
-  - Added consistent CHEST_COUNT columns to all datasets (chest_totals, source_totals, date_totals)
-  - Simplified the measure-to-column mapping logic to use direct column names
-  - Added detailed debug output to verify column presence and values
-  - Removed dynamic column creation that was causing issues
-  - Enhanced the user experience by ensuring all dimensions can display chest counts correctly
 
-- UI Usability Improvements (2024-07-14):
-  - Enhanced Charts Tab consistency:
-    - Made all chart controls (sorting, limiting, display options) update the chart immediately
-    - Removed the redundant "Apply Options" button since it's no longer needed
-    - Connected signals for all controls to update_chart method for real-time updates
-  - Improved UI controls visibility and usability:
-    - Enlarged spinbox up/down buttons throughout the application (20px width, 15px height)
-    - Added hover effects to spinbox buttons for better user feedback
-    - Applied consistent button styling across all spinboxes in the application
-  - Enhanced Tab navigation logic:
-    - Made tabs other than Import non-clickable until a CSV file is successfully loaded
-    - Added greyed-out styling for disabled tabs (#666666 text color)
-    - Implemented enable_all_tabs and disable_tabs_except_import methods
-    - Ensured theme is reapplied when tabs are enabled for consistent styling
-  - Added better status bar feedback with file name display on successful load
+### 2024-03-12: Fixed Chart Styling and File Dialog Issues
 
-- Implemented Two-Step Data Selection Process in Charts tab:
-  - Replaced single "Data to Show" dropdown with more logical Group By + Measure selections
-  - Added "Group By" dropdown for dimension selection (PLAYER, CHEST, SOURCE, DATE)
-  - Added "Measure" dropdown for metric selection (TOTAL_SCORE, CHEST_COUNT, AVG_SCORE)
-  - Created dynamic UI that updates available measures based on selected dimension
-  - Implemented dynamic sort options that change based on selected dimension
-  - Maintained backward compatibility with existing chart code
-  - Updated chart title to reflect selected dimension and measure
-  - Fixed all export functionalities to work with the new selection process
-  - Enhanced UX by eliminating redundancy in chart data selection
+- **Task**: Fix chart styling in the Charts tab and resolve the double file dialog issue
+- **Status**: Completed
+- **Details**:
+  - Fixed chart styling in the Charts tab by enhancing the `MplCanvas` class with new helper methods:
+    - Added `apply_style_to_axes` method to allow styling specific axes objects
+    - Added `get_tableau_colors` method to provide a consistent color palette for charts
+    - Updated the `update_chart` method to use these new helper methods
+    - Improved pie chart handling to limit slices to top 9 + "Others" for better readability
+  - Fixed the double file dialog issue by:
+    - Modifying the `connect_signals` method to properly connect the menu action to the `ImportArea.open_file_dialog` method directly
+    - Updating the `open_csv_file` method to redirect to `ImportArea.open_file_dialog` for backward compatibility
+    - Adding proper error handling for signal connections to prevent crashes when UI components aren't fully initialized
+  - Fixed Player Performance report error by updating the `create_player_performance_html` method to use 'SCORE' instead of 'TOTAL_SCORE'
+  - All changes were made with careful attention to maintain backward compatibility and ensure robust error handling
+  - The application now runs without errors, with properly styled charts and a smoother file selection experience
 
 ## Dependencies
 - PySide6: 6.8.2.1
@@ -263,148 +245,6 @@ alwaysApply: false
 - Filter areas now use full vertical space for better usability when selecting values
 - Charts tab has enhanced customization options and better space utilization
 - The application now uses pathlib consistently for file and directory operations, which improves cross-platform compatibility
-
-## 2024-06-01: Added Report Tab
-- Implemented a new Report tab with comprehensive reporting capabilities
-- Added HTML and PDF export functionality
-- Created four report types:
-  1. Full Report - comprehensive overview of all data
-  2. Player Performance - focused on player scores, chest counts, and efficiency
-  3. Chest Type Analysis - detailed breakdown of chest types and their values
-  4. Source Analysis - analysis of score sources and their distribution
-- Created professional styled report template with Total Battle theme
-- Implemented chart generation for reports with various visualization types
-- Added export functionality for both HTML and PDF formats with page setup options
-
-## 2024-06-01: Enhanced Chart Functionality
-- Added TOTAL_SCORE and CHEST_COUNT to chart data selector
-- Implemented new Bubble Chart type for 3D data visualization (score vs chest count with efficiency as bubble size)
-- Improved chart data display with better axis labels and titles
-- Added efficiency metrics (points per chest) for player performance analysis
-- Enhanced chart type selector to work with all data types
-
-## 2024-05-31: Fixed Filter Selection Functionality
-- Fixed issue with filter selection not working properly
-- Implemented signal blocking during filter list updates
-- Added proper error handling and data validation
-- Fixed visibility toggle for analysis value selection panel
-
-## 2024-06-05: Fixed Raw Data Tab Filter Interface
-- Replaced the FilterArea component with a direct implementation matching the Analysis tab
-- Ensured both tabs use the same filter UI structure and pattern
-- Made select specific values work correctly in the Raw Data tab
-- Fixed column population and value list selection in both tabs
-- Removed dependency on the FilterArea component
-- Enhanced the toggle_value_selection methods to handle different state parameter types
-
-## 2024-06-11: Improved GUI Layout and Chart Customization
-- Optimized filter selection areas in both Raw Data and Analysis tabs:
-  - Made value selection lists expand to use all available vertical space
-  - Applied proper stretch factors to QListWidget and parent containers
-  - Reduced spacer stretch to prioritize functional elements
-  - Used QSizePolicy to ensure proper widget expansion
-  
-- Completely redesigned the Charts tab:
-  - Removed the unused placeholder widget
-  - Added comprehensive chart controls grouped in a "Chart Customization" panel
-  - Implemented data column selection for different metrics
-  - Added sorting controls by column and direction
-  - Added result limiting with "top N" filtering
-  - Added display options for value labels and grid lines
-  - Implemented direct chart display without the need for dynamic widget insertion
-  - Added chart saving functionality with multiple format support
-
-- Enhanced chart visualization:
-  - Updated the update_chart method to handle all new customization options
-  - Improved chart styling with better spacing and formatting
-  - Added bold text for value labels
-  - Implemented proper positioning for data point labels
-  - Added wedge properties for better pie chart appearance
-  - Ensured consistent styling across all chart types
-  - Made value display optional and controlled by user preference
-
-## 2024-07-05: Enhanced German Character Encoding Handling
-- Implemented an advanced scoring system to automatically select the optimal encoding for German text
-- Each encoding is evaluated based on:
-  - Whether it preserves proper German characters (highest priority)
-  - The count of replacement characters (fewer is better)
-  - Default fallback prioritizing German-friendly encodings
-- Completely removed all specific name patterns (like "Jäger", "Müller")
-- Replaced pattern matching with a linguistic approach based on character adjacency in German:
-  - Adjacent character analysis to determine most likely umlaut ('ä', 'ö', 'ü') based on surrounding letters
-  - Identified common contexts where each German umlaut typically appears (e.g., 'ä' often appears before 'r')
-  - Added common prefixes for each umlaut (e.g., 'sch' before 'ä' or 'ö', 'kr' before 'ü')
-- Implemented a multi-pass correction strategy:
-  - First pass: Check for and preserve already correct German characters
-  - Second pass: Apply context-sensitive replacements based on surrounding letters
-  - Third pass: Apply prefix/suffix analysis to determine appropriate umlauts
-  - Final pass: Default replacements for any remaining issues
-- Unified handling of all replacement character types (Unicode replacement character and question marks)
-- Enhanced debugging with detailed logging of encoding selection process
-
-## Next Steps
-- Test the application with different CSV files to ensure consistent behavior with new chart customization options
-- Consider adding more chart types (scatter plots, histograms, etc.)
-- Look for other UI layout improvements that could enhance user experience
-- Consider adding chart presets for common visualization scenarios
-- Explore options for advanced chart interactions (tooltips, zoom, etc.)
-
-## Application Structure
-- The application uses a tab-based interface with Import, Raw Data, Analysis, Charts, and Report tabs
-- Data is loaded from CSV files and displayed in tables
-- Filtering is implemented using QSortFilterProxyModel
-- Analysis tab provides statistical insights with various analysis views
-- Charts tab offers customizable visualizations using matplotlib
-- Report tab generates comprehensive reports with charts, tables, and statistics
-
-## Key Components
-- MainWindow: Main application window with tab interface
-- ImportArea: Widget for importing CSV files
-- DataTable: Custom table model for displaying data
-- FilterBox: Widget for filtering data
-- AnalysisTab: Widget for analyzing data
-- ChartTab: Widget for generating charts
-- ReportTab: Widget for generating reports
-
-## Recent Fixes
-- Fixed duplicate toggle_analysis_value_selection methods
-- Fixed analysis_column_selector population
-- Fixed analysis_value_panel visibility toggling
-- Enhanced toggle_value_selection methods to handle different state parameter types
-- Added comprehensive debugging output
-
-## 2024-06-04: UI Improvements
-- Fixed UI inconsistencies between Analysis tab and Raw Data tab:
-  - Moved view selection into the filter options in the Analysis tab
-  - Renamed filter box to "Filter and View Options" for better clarity
-  - Made the Analysis tab layout consistent with the Raw Data tab
-  - Fixed the "select specific values" checkbox functionality
-  - Improved value list population in the Analysis tab
-- Enhanced German umlaut handling:
-  - Verified proper detection of German umlauts in CSV files
-  - Confirmed automatic fixing of garbled German characters
-  - Ensured prioritization of German-friendly encodings when umlauts are detected
-  - Maintained proper UTF-8 export to preserve special characters
-- Improved user experience:
-  - Made filter controls more intuitive and consistent across tabs
-  - Enhanced value selection with proper visibility toggling
-  - Added signal blocking during list updates to prevent recursive calls
-  - Improved error handling and status messages
-
-## Notes
-- The Report tab is only enabled after data is loaded
-- Reports are generated based on the current analysis results
-- PDF export requires the QPrinter module from PySide6.QtPrintSupport
-- Chart generation uses matplotlib to create temporary image files
-- HTML reports use a dark theme matching the application's UI
-
-## Current Task Status
-- Fixed the Analysis tab to display processed data instead of raw data 
-- Identified and removed a duplicate `update_analysis_view` method that was overriding the correct implementation
-- Added detailed debug logging to the `update_analysis_view` method to trace data flow
-- Verified the fix works correctly through testing
-- Confirmed that the app now correctly shows analyzed data in the Analysis tab
-- Updated the app_report.mdc file with information about the fixes
 
 ## File Structure
 - src/
@@ -445,4 +285,3 @@ alwaysApply: false
 - The DataProcessor.analyze_data method returns a dictionary of DataFrames with various analysis types
 - The duplicate method was causing the app to display raw data instead of processed data
 - Debug logging was added to trace the data flow in the update_analysis_view method
- 

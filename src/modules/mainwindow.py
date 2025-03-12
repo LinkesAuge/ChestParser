@@ -72,6 +72,9 @@ class MainWindow(QMainWindow):
         self.processed_data = None
         self.analysis_data = None
         
+        # Track the last loaded file to prevent duplicate loading
+        self.last_loaded_file = None
+        
         # Initialize visibility tracking variables
         self._was_value_list_visible = False
         self._was_analysis_value_panel_visible = False
@@ -156,6 +159,18 @@ class MainWindow(QMainWindow):
         Args:
             file_path (str): Path to the CSV file to load
         """
+        # Convert file_path to Path object for consistent handling
+        file_path = Path(file_path)
+        
+        # Check if we're trying to load the same file again
+        if self.last_loaded_file == str(file_path.absolute()):
+            if self.debug:
+                print(f"File already loaded: {file_path}")
+            # File already processed, just ensure tabs are enabled and return success
+            self.enable_all_tabs()
+            self.statusBar().showMessage(f"File already loaded: {file_path.name}")
+            return True
+        
         if self.debug:
             print(f"\n--- LOAD CSV FILE: {file_path} ---\n")
         
@@ -165,9 +180,9 @@ class MainWindow(QMainWindow):
                 print("Using enhanced DataProcessor.read_csv_with_encoding_fix for better umlaut handling")
                 print(f"File path type: {type(file_path)}")
                 print(f"File path: {file_path}")
-                print(f"Exists: {os.path.exists(file_path)}")
+                print(f"Exists: {file_path.exists()}")
             
-            # Enable debugging in DataProcessor temporarily
+            # Enable debugging in DataProcessor temporarily if our debug is enabled
             old_debug = DataProcessor.debug
             DataProcessor.debug = self.debug
             
@@ -184,6 +199,9 @@ class MainWindow(QMainWindow):
                 
             # Store the data
             self.raw_data = df.copy()
+            
+            # Store the file path so we don't reload the same file
+            self.last_loaded_file = str(file_path.absolute())
             
             if self.debug:
                 print(f"Successfully loaded CSV file with enhanced umlaut handling")
@@ -276,7 +294,7 @@ class MainWindow(QMainWindow):
             self.enable_all_tabs()
             
             # Update the status bar to indicate successful loading
-            self.statusBar().showMessage(f"CSV file loaded: {Path(file_path).name}")
+            self.statusBar().showMessage(f"CSV file loaded: {file_path.name}")
                 
             return True
                 
@@ -411,7 +429,7 @@ class MainWindow(QMainWindow):
             print(f"Update chart called")
         
         # Check if we have necessary UI components
-        if not hasattr(self, 'chart_group_by') or not hasattr(self, 'chart_measure') or not hasattr(self, 'chart_canvas'):
+        if not hasattr(self, 'chart_data_category') or not hasattr(self, 'chart_data_column') or not hasattr(self, 'chart_canvas'):
             if self.debug:
                 print("Chart UI components not found")
             return
@@ -424,8 +442,8 @@ class MainWindow(QMainWindow):
         
         try:
             # Get the selected options
-            group_by_dimension = self.chart_group_by.currentText()
-            measure = self.chart_measure.currentText()
+            group_by_dimension = self.chart_data_category.currentText()
+            measure = self.chart_data_column.currentText()
             chart_type = self.chart_type_selector.currentText()
             
             # Map the group by dimension to the right data category for getting the correct dataset
@@ -450,7 +468,7 @@ class MainWindow(QMainWindow):
             sort_ascending = self.chart_sort_order.currentText() == "Ascending"
             
             # Get limit options
-            limit_results = self.chart_limit_checkbox.isChecked()
+            limit_results = self.chart_limit_enabled.isChecked()
             limit_value = self.chart_limit_value.value()
             
             # Get display options
@@ -458,27 +476,21 @@ class MainWindow(QMainWindow):
             show_grid = self.chart_show_grid.isChecked()
             
             # Clear the figure
-            self.chart_figure.clear()
+            self.chart_canvas.fig.clear()
             
-            # Set the chart background color to match application theme
-            self.chart_figure.patch.set_facecolor('#1A2742')
+            # Set figure background color
+            self.chart_canvas.fig.patch.set_facecolor(self.chart_canvas.style_presets['default']['bg_color'])
             
-            # Create subplot
-            ax = self.chart_figure.add_subplot(111)
-            ax.set_facecolor('#1A2742')
+            # Create subplot and apply styling
+            ax = self.chart_canvas.fig.add_subplot(111)
+            self.chart_canvas.apply_style_to_axes(ax)
             
-            # Set grid visibility based on option
-            if show_grid:
-                ax.grid(True, color='#3A4762', linestyle='-', linewidth=0.5, alpha=0.7)
-            else:
-                ax.grid(False)
+            # Get chart colors
+            TABLEAU_COLORS = self.chart_canvas.get_tableau_colors()
             
-            # Set text colors
-            ax.xaxis.label.set_color('#FFFFFF')
-            ax.yaxis.label.set_color('#FFFFFF')
-            ax.title.set_color('#D4AF37')
-            for text in ax.get_xticklabels() + ax.get_yticklabels():
-                text.set_color('#FFFFFF')
+            # Set grid visibility according to user preference
+            ax.grid(show_grid, color=self.chart_canvas.style_presets['default']['grid_color'], 
+                  linestyle='--', linewidth=0.5, alpha=0.7)
             
             # Get data based on group by dimension (via data category mapping)
             if data_category == "Player Totals":
@@ -567,7 +579,7 @@ class MainWindow(QMainWindow):
                     print(f"Available columns: {data.columns.tolist()}")
             
             if chart_type == "Bar Chart":
-                bars = ax.bar(data[category_column].values, data[measure].values, color='#5991C4')
+                bars = ax.bar(data[category_column].values, data[measure].values, color=TABLEAU_COLORS[1])  # Blue
                 ax.set_ylabel(f'{measure.replace("_", " ").title()}')
                 ax.set_title(chart_title)
                 plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
@@ -577,10 +589,12 @@ class MainWindow(QMainWindow):
                     for bar in bars:
                         height = bar.get_height()
                         ax.text(bar.get_x() + bar.get_width()/2., height,
-                               f'{height:,.0f}', ha='center', va='bottom', color='white', fontweight='bold')
+                               f'{height:,.0f}', ha='center', va='bottom', 
+                               color=self.chart_canvas.style_presets['default']['text_color'], 
+                               fontweight='bold')
                                
             elif chart_type == "Horizontal Bar":
-                bars = ax.barh(data[category_column].values, data[measure].values, color='#D4AF37')
+                bars = ax.barh(data[category_column].values, data[measure].values, color=TABLEAU_COLORS[0])  # Gold
                 ax.set_xlabel(f'{measure.replace("_", " ").title()}')
                 ax.set_title(chart_title)
                 
@@ -589,26 +603,48 @@ class MainWindow(QMainWindow):
                     for i, bar in enumerate(bars):
                         value = data[measure].values[i]
                         ax.text(value, bar.get_y() + bar.get_height()/2, f" {value:,.0f}", 
-                               va='center', color='white', fontweight='bold')
+                               va='center', 
+                               color=self.chart_canvas.style_presets['default']['text_color'], 
+                               fontweight='bold')
                 
             elif chart_type == "Pie Chart":
-                pie_colors = ['#D4AF37', '#5991C4', '#6EC1A7', '#D46A5F', '#9966CC', '#F0C75A', '#527A96']
+                # Calculate smaller data sample if too many slices would make pie chart unreadable
+                pie_data = data
+                if len(data) > 10:
+                    # Limit to top 9 + "Others"
+                    top_items = data.iloc[:9].copy()
+                    others_sum = data.iloc[9:][measure].sum()
+                    others_row = pd.DataFrame({
+                        category_column: ['Others'],
+                        measure: [others_sum]
+                    })
+                    pie_data = pd.concat([top_items, others_row]).reset_index(drop=True)
+                
+                # Use multiple colors from TABLEAU_COLORS for pie slices (cycle if needed)
+                colors_to_use = []
+                for i in range(len(pie_data)):
+                    colors_to_use.append(TABLEAU_COLORS[i % len(TABLEAU_COLORS)])
+                    
                 wedges, texts, autotexts = ax.pie(
-                    data[measure].values, 
-                    labels=data[category_column].values, 
+                    pie_data[measure].values, 
+                    labels=pie_data[category_column].values, 
                     autopct='%1.1f%%' if show_values else '',
-                    colors=pie_colors[:len(data)],
+                    colors=colors_to_use,
                     startangle=90,
-                    wedgeprops={'edgecolor': '#1A2742', 'linewidth': 1}
+                    wedgeprops={'edgecolor': self.chart_canvas.style_presets['default']['bg_color'], 'linewidth': 1}
                 )
-                for text in texts + autotexts:
-                    text.set_color('white')
+                # Style the pie chart text
+                for text in texts:
+                    text.set_color(self.chart_canvas.style_presets['default']['text_color'])
                 for autotext in autotexts:
+                    autotext.set_color('white')
                     autotext.set_fontweight('bold')
                 ax.set_title(f'{chart_title} Distribution')
                 
             elif chart_type == "Line Chart":
-                line = ax.plot(data[category_column].values, data[measure].values, marker='o', color='#6EC1A7', linewidth=2)
+                line = ax.plot(data[category_column].values, data[measure].values, 
+                              marker='o', color=TABLEAU_COLORS[2],  # Green
+                              linewidth=2, markersize=8)
                 ax.set_ylabel(f'{measure.replace("_", " ").title()}')
                 ax.set_title(f'{chart_title} Trends')
                 plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
@@ -621,11 +657,11 @@ class MainWindow(QMainWindow):
                                   textcoords="offset points", 
                                   xytext=(0,10), 
                                   ha='center',
-                                  color='white',
+                                  color=self.chart_canvas.style_presets['default']['text_color'],
                                   fontweight='bold')
             
             # Adjust layout
-            self.chart_figure.tight_layout()
+            self.chart_canvas.fig.tight_layout()
             
             # Refresh the canvas
             self.chart_canvas.draw()
@@ -640,187 +676,157 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"Error updating chart: {str(e)}")
     
     def save_chart(self):
-        """Save the current chart to a file or export data for spreadsheet use."""
-        if not hasattr(self, 'chart_figure'):
-            self.statusBar().showMessage("No chart to save")
-            return
-            
+        """Save the current chart as an image file."""
         try:
-            # Get export options
-            export_options = QDialog(self)
-            export_options.setWindowTitle("Export Options")
-            export_options.setMinimumWidth(300)
-            
-            export_layout = QVBoxLayout(export_options)
-            
-            export_type_group = QGroupBox("Export Type")
-            export_type_layout = QVBoxLayout()
-            
-            image_radio = QRadioButton("Export as Image")
-            image_radio.setChecked(True)
-            data_radio = QRadioButton("Export Data for Excel/Sheets")
-            
-            export_type_layout.addWidget(image_radio)
-            export_type_layout.addWidget(data_radio)
-            export_type_group.setLayout(export_type_layout)
-            
-            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-            buttons.accepted.connect(export_options.accept)
-            buttons.rejected.connect(export_options.reject)
-            
-            export_layout.addWidget(export_type_group)
-            export_layout.addWidget(buttons)
-            
-            # Show dialog and get result
-            if export_options.exec() != QDialog.Accepted:
+            # Make sure we have a chart to save
+            if not hasattr(self, 'chart_canvas') or self.chart_canvas is None:
+                QMessageBox.warning(self, "Save Error", "No chart to save.")
                 return
-            
-            # Determine export type
-            export_as_image = image_radio.isChecked()
-            
-            if export_as_image:
-                # Export as image (PNG, JPG, PDF, SVG)
-                file_path, selected_filter = QFileDialog.getSaveFileName(
-                    self, 
-                    "Save Chart as Image", 
-                    str(self.export_dir / "chart.png"),
-                    "PNG Image (*.png);;JPEG Image (*.jpg);;PDF Document (*.pdf);;SVG Image (*.svg)"
-                )
                 
-                if not file_path:
-                    return  # User canceled
-                    
-                # Save the figure
-                self.chart_figure.savefig(
-                    file_path,
-                    dpi=300,
-                    bbox_inches='tight',
-                    facecolor=self.chart_figure.get_facecolor()
-                )
-                
-                self.statusBar().showMessage(f"Chart saved to {file_path}")
-            else:
-                # Export data as CSV for Excel/Google Sheets
-                file_path, _ = QFileDialog.getSaveFileName(
-                    self, 
-                    "Export Chart Data", 
-                    str(self.export_dir / "chart_data.csv"),
-                    "CSV File (*.csv);;Excel File (*.xlsx)"
-                )
-                
-                if not file_path:
-                    return  # User canceled
-                
-                # Get the current chart data
-                try:
-                    # Get data based on group by dimension
-                    group_by_dimension = self.chart_group_by.currentText()
-                    data_category = ""
-                    
-                    if group_by_dimension == "PLAYER":
-                        data_category = "Player Totals"
-                        data = self.analysis_results['player_totals'].copy()
-                    elif group_by_dimension == "CHEST":
-                        data_category = "Chest Totals"
-                        data = self.analysis_results['chest_totals'].copy()
-                    elif group_by_dimension == "SOURCE":
-                        data_category = "Source Totals"
-                        data = self.analysis_results['source_totals'].copy()
-                    elif group_by_dimension == "DATE":
-                        data_category = "Date Totals"
-                        data = self.analysis_results['date_totals'].copy()
-                    else:
-                        self.statusBar().showMessage(f"Unknown group by dimension: {group_by_dimension}")
-                        return
-                    
-                    # Check if we have data to export
-                    if len(data) == 0:
-                        self.statusBar().showMessage(f"No data available to export")
-                        return
-                    
-                    # Get the selected measure
-                    measure = self.chart_measure.currentText()
-                    
-                    # Make sure the measure column exists in the dataset
-                    if measure not in data.columns:
-                        if self.debug:
-                            print(f"Measure column '{measure}' not found in data! Available columns: {data.columns.tolist()}")
-                        
-                        # Some analyses might have different column names
-                        if measure == "TOTAL_SCORE" and "SCORE" in data.columns:
-                            measure = "SCORE"
-                            if self.debug:
-                                print(f"Using SCORE instead of TOTAL_SCORE for export")
-                        else:
-                            measure = "SCORE"  # Default fallback
-                            if self.debug:
-                                print(f"Using default fallback measure: SCORE for export")
-                    
-                    # Get the sorting options
-                    sort_column = self.chart_sort_column.currentText()
-                    sort_ascending = self.chart_sort_order.currentText() == "Ascending"
-                    limit_results = self.chart_limit_checkbox.isChecked()
-                    limit_value = self.chart_limit_value.value()
-                    
-                    # Apply sorting and limiting to match what's shown in the chart
-                    sort_by = sort_column
-                    if sort_column not in data.columns:
-                        sort_by = measure
-                        if self.debug:
-                            print(f"Sort column {sort_column} not found, using {measure} instead")
-                    
-                    data = data.sort_values(sort_by, ascending=sort_ascending)
-                    
-                    if limit_results and len(data) > limit_value:
-                        data = data.head(limit_value)
-                    
-                    # Export to file
-                    if file_path.lower().endswith('.csv'):
-                        # Use our new write_csv_with_umlauts function for proper umlaut handling
-                        if not DataProcessor.write_csv_with_umlauts(data, file_path):
-                            QMessageBox.warning(
-                                self,
-                                "CSV Export Error",
-                                "Failed to export CSV file with proper encoding.",
-                                QMessageBox.Ok
-                            )
-                            return
-                    elif file_path.lower().endswith('.xlsx'):
-                        try:
-                            data.to_excel(file_path, index=False)
-                        except ImportError:
-                            # If openpyxl is not installed, show an error message
-                            QMessageBox.warning(
-                                self,
-                                "Excel Export Error",
-                                "Excel export requires the openpyxl package. Saving as CSV instead.",
-                                QMessageBox.Ok
-                            )
-                            # Save as CSV instead with proper umlaut handling
-                            file_path = file_path.replace('.xlsx', '.csv')
-                            if not DataProcessor.write_csv_with_umlauts(data, file_path):
-                                QMessageBox.warning(
-                                    self,
-                                    "CSV Export Error",
-                                    "Failed to export CSV file with proper encoding.",
-                                    QMessageBox.Ok
-                                )
-                                return
-                    
-                    self.statusBar().showMessage(f"Chart data exported to {file_path}")
-                
-                except Exception as e:
-                    if self.debug:
-                        print(f"Error exporting chart data: {str(e)}")
-                        traceback.print_exc()
-                    self.statusBar().showMessage(f"Error exporting chart data: {str(e)}")
-        
-        except Exception as e:
-            if self.debug:
-                print(f"Error saving chart: {str(e)}")
-                traceback.print_exc()
-            self.statusBar().showMessage(f"Error saving chart: {str(e)}")
+            # Get export directory from config
+            export_dir = Path(self.config_manager.get_export_directory())
+            if not export_dir.exists():
+                export_dir.mkdir(parents=True, exist_ok=True)
 
+            # Generate a default filename based on chart data
+            if hasattr(self, 'chart_data_category') and hasattr(self, 'chart_data_column'):
+                category = self.chart_data_category.currentText()
+                column = self.chart_data_column.currentText()
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                default_filename = f"Chart_{category}_{column}_{timestamp}"
+            else:
+                default_filename = f"Chart_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+            # Show file dialog
+            file_formats = "PNG Image (*.png);;JPEG Image (*.jpg);;PDF Document (*.pdf);;SVG Image (*.svg)"
+            filepath, selected_filter = QFileDialog.getSaveFileName(
+                self, "Save Chart", str(export_dir / default_filename), file_formats
+            )
+            
+            if not filepath:
+                return
+                
+            # Save the directory for next time
+            self.config_manager.set_export_directory(str(Path(filepath).parent))
+            
+            # Get file extension from selected filter
+            if selected_filter == "PNG Image (*.png)":
+                if not filepath.lower().endswith('.png'):
+                    filepath += '.png'
+                self.chart_canvas.fig.savefig(filepath, format='png', dpi=300, bbox_inches='tight', 
+                                              facecolor='#1A2742', edgecolor='none')
+            elif selected_filter == "JPEG Image (*.jpg)":
+                if not filepath.lower().endswith('.jpg'):
+                    filepath += '.jpg'
+                self.chart_canvas.fig.savefig(filepath, format='jpg', dpi=300, bbox_inches='tight',
+                                              facecolor='#1A2742', edgecolor='none')
+            elif selected_filter == "PDF Document (*.pdf)":
+                if not filepath.lower().endswith('.pdf'):
+                    filepath += '.pdf'
+                self.chart_canvas.fig.savefig(filepath, format='pdf', bbox_inches='tight',
+                                             facecolor='#1A2742', edgecolor='none')
+            elif selected_filter == "SVG Image (*.svg)":
+                if not filepath.lower().endswith('.svg'):
+                    filepath += '.svg'
+                self.chart_canvas.fig.savefig(filepath, format='svg', bbox_inches='tight',
+                                             facecolor='#1A2742', edgecolor='none')
+                
+            # Show success message
+            QMessageBox.information(self, "Save Successful", f"Chart saved to:\n{filepath}")
+            
+        except Exception as e:
+            log_error("Error saving chart", e)
+            QMessageBox.warning(self, "Save Error", f"An error occurred while saving the chart: {str(e)}")
+            
+    def export_chart_data(self):
+        """Export the current chart data to a CSV or Excel file."""
+        try:
+            # Make sure we have data to export
+            if self.analysis_results is None or not self.analysis_results:
+                QMessageBox.warning(self, "Export Error", "No data to export.")
+                return
+                
+            # Get export directory from config
+            export_dir = Path(self.config_manager.get_export_directory())
+            if not export_dir.exists():
+                export_dir.mkdir(parents=True, exist_ok=True)
+                
+            # Get the current data category and column
+            if not hasattr(self, 'chart_data_category') or not hasattr(self, 'chart_data_column'):
+                QMessageBox.warning(self, "Export Error", "No chart data configuration available.")
+                return
+                
+            category = self.chart_data_category.currentText()
+            
+            # Determine which dataset to use
+            if category == "PLAYER":
+                dataset_key = 'player_totals'
+            elif category == "CHEST":
+                dataset_key = 'chest_totals'
+            elif category == "SOURCE":
+                dataset_key = 'source_totals'
+            elif category == "DATE":
+                dataset_key = 'date_totals'
+            else:
+                QMessageBox.warning(self, "Export Error", f"Unknown data category: {category}")
+                return
+                
+            # Get the data from analysis results
+            if dataset_key in self.analysis_results and not self.analysis_results[dataset_key].empty:
+                df = self.analysis_results[dataset_key].copy()
+            else:
+                QMessageBox.warning(self, "Export Error", f"No data available for {dataset_key}.")
+                return
+                
+            # Generate a default filename based on chart data
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            default_filename = f"ChartData_{category}_{timestamp}"
+
+            # Show file dialog
+            file_formats = "CSV Files (*.csv);;Excel Files (*.xlsx)"
+            filepath, selected_filter = QFileDialog.getSaveFileName(
+                self, "Export Chart Data", str(export_dir / default_filename), file_formats
+            )
+            
+            if not filepath:
+                return
+                
+            # Save the directory for next time
+            self.config_manager.set_export_directory(str(Path(filepath).parent))
+            
+            # Apply current sorting
+            sort_column = self.chart_sort_column.currentText()
+            ascending = self.chart_sort_order.currentText() == "Ascending"
+            
+            if sort_column in df.columns:
+                df = df.sort_values(by=sort_column, ascending=ascending)
+                
+            # Apply current limit if enabled
+            if self.chart_limit_enabled.isChecked():
+                limit = self.chart_limit_value.value()
+                df = df.head(limit)
+            
+            # Export the data
+            if selected_filter == "CSV Files (*.csv)":
+                if not filepath.lower().endswith('.csv'):
+                    filepath += '.csv'
+                    
+                # Use the improved CSV writing function from DataProcessor
+                DataProcessor.write_csv_with_umlauts(df, filepath)
+                    
+            elif selected_filter == "Excel Files (*.xlsx)":
+                if not filepath.lower().endswith('.xlsx'):
+                    filepath += '.xlsx'
+                df.to_excel(filepath, index=False)
+                
+            # Show success message
+            QMessageBox.information(self, "Export Successful", f"Chart data exported to:\n{filepath}")
+            
+        except Exception as e:
+            log_error("Error exporting chart data", e)
+            traceback.print_exc()
+            QMessageBox.warning(self, "Export Error", f"An error occurred while exporting the chart data: {str(e)}")
+            
     def process_data(self):
         """Process the loaded data to prepare it for analysis and visualization."""
         if self.data is None:
@@ -1410,7 +1416,6 @@ class MainWindow(QMainWindow):
             if self.debug:
                 print(f"Created raw data model with {len(self.processed_data)} rows and {len(self.processed_data.columns)} columns")
                 print(f"Set up proxy model for raw data table for sorting and filtering")
-
     def setup_ui_components(self):
         """Set up the UI components."""
         # Create central widget and main layout
@@ -1429,18 +1434,21 @@ class MainWindow(QMainWindow):
         self.raw_data_tab = QWidget()
         self.analysis_tab = QWidget()
         self.charts_tab = QWidget()
+        self.report_tab = QWidget()
         
         # Setup tabs
         self.setup_import_tab()
         self.setup_raw_data_tab()
         self.setup_analysis_tab()
         self.setup_charts_tab()
+        self.setup_report_tab()
         
         # Add tabs to widget
         self.tab_widget.addTab(self.import_tab, "Import")
         self.tab_widget.addTab(self.raw_data_tab, "Raw Data")
         self.tab_widget.addTab(self.analysis_tab, "Analysis")
         self.tab_widget.addTab(self.charts_tab, "Charts")
+        self.tab_widget.addTab(self.report_tab, "Report")
         
         # Initially disable all tabs except Import (index 0)
         self.disable_tabs_except_import()
@@ -1494,7 +1502,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.file_label)
         
         # Create import area
-        self.import_area = ImportArea(self.import_tab, self.import_dir)
+        self.import_area = ImportArea(self.import_tab, debug=self.debug)
         
         # Add to import layout
         layout.addWidget(self.import_area)
@@ -1707,195 +1715,1058 @@ class MainWindow(QMainWindow):
 
     def setup_charts_tab(self):
         """Set up the Charts tab."""
-        # Set up layout
-        layout = QVBoxLayout(self.charts_tab)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        # Create chart tab layout
+        main_layout = QVBoxLayout(self.charts_tab)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
         
-        # Create horizontal splitter for controls and chart
-        charts_splitter = QSplitter(Qt.Horizontal)
+        # Create horizontal splitter for control panel and chart
+        chart_splitter = QSplitter(Qt.Horizontal)
         
-        # Create left panel for chart controls
-        left_panel = QWidget()
-        left_layout = QVBoxLayout(left_panel)
-        left_layout.setContentsMargins(5, 5, 5, 5)
-        left_layout.setSpacing(5)
+        # Left control panel
+        control_panel = QWidget()
+        control_layout = QVBoxLayout(control_panel)
+        control_layout.setContentsMargins(5, 5, 5, 5)
+        control_layout.setSpacing(5)
         
-        # Create chart controls group
-        chart_controls_group = QGroupBox("Chart Customization")
-        chart_controls_layout = QVBoxLayout()
-        chart_controls_layout.setSpacing(10)
+        # Group data selection controls
+        data_group = QGroupBox("Data Selection")
+        data_layout = QVBoxLayout()
         
-        # Chart type selection
+        # Two-step data selection process
+        # Step 1: Group By dimension selector
+        group_by_layout = QHBoxLayout()
+        group_by_layout.addWidget(QLabel("Group By:"))
+        self.chart_data_category = QComboBox()
+        self.chart_data_category.addItems(["PLAYER", "CHEST", "SOURCE", "DATE"])
+        group_by_layout.addWidget(self.chart_data_category)
+        data_layout.addLayout(group_by_layout)
+        
+        # Step 2: Measure value selector
+        measure_layout = QHBoxLayout()
+        measure_layout.addWidget(QLabel("Measure:"))
+        self.chart_data_column = QComboBox()
+        # Will be populated based on Group By selection
+        measure_layout.addWidget(self.chart_data_column)
+        data_layout.addLayout(measure_layout)
+        
+        # Chart type selector
         chart_type_layout = QHBoxLayout()
         chart_type_layout.addWidget(QLabel("Chart Type:"))
         self.chart_type_selector = QComboBox()
-        self.chart_type_selector.addItems([
-            "Bar Chart",
-            "Horizontal Bar",
-            "Pie Chart",
-            "Line Chart"
-        ])
+        self.chart_type_selector.addItems(["Bar Chart", "Horizontal Bar", "Pie Chart", "Line Chart"])
         chart_type_layout.addWidget(self.chart_type_selector)
-        chart_controls_layout.addLayout(chart_type_layout)
+        data_layout.addLayout(chart_type_layout)
         
-        # NEW: Two-step data selection
-        # 1. Group By (dimension)
-        group_by_layout = QHBoxLayout()
-        group_by_layout.addWidget(QLabel("Group By:"))
-        self.chart_group_by = QComboBox()
-        self.chart_group_by.addItems([
-            "PLAYER",
-            "CHEST",
-            "SOURCE",
-            "DATE"
-        ])
-        group_by_layout.addWidget(self.chart_group_by)
-        chart_controls_layout.addLayout(group_by_layout)
-        
-        # 2. Measure (metric)
-        measure_layout = QHBoxLayout()
-        measure_layout.addWidget(QLabel("Measure:"))
-        self.chart_measure = QComboBox()
-        self.chart_measure.addItems([
-            "SCORE",
-            "CHEST_COUNT",
-            "TOTAL_SCORE"
-        ])
-        measure_layout.addWidget(self.chart_measure)
-        chart_controls_layout.addLayout(measure_layout)
-        
-        # For compatibility with existing code
-        self.chart_data_category = QComboBox()
-        self.chart_data_category.addItems([
-            "Player Totals",
-            "Chest Totals",
-            "Source Totals",
-            "Date Totals"
-        ])
-        self.chart_data_category.setVisible(False)  # Hide the old dropdown
-        self.chart_data_column = QComboBox()
-        self.chart_data_column.addItems(["SCORE", "CHEST_COUNT", "TOTAL_SCORE"])
-        self.chart_data_column.setVisible(False)  # Hide the old dropdown
-        
-        # Sorting group
-        sorting_group = QGroupBox("Sorting Options")
-        sorting_layout = QVBoxLayout()
-        
-        # Sort column
-        sort_column_layout = QHBoxLayout()
-        sort_column_layout.addWidget(QLabel("Sort By:"))
+        # Sorting options
+        sort_layout = QHBoxLayout()
+        sort_layout.addWidget(QLabel("Sort By:"))
         self.chart_sort_column = QComboBox()
-        self.chart_sort_column.addItems(["SCORE", "CHEST_COUNT", "TOTAL_SCORE"])
-        sort_column_layout.addWidget(self.chart_sort_column)
-        sorting_layout.addLayout(sort_column_layout)
+        # Will be populated based on Group By selection
+        sort_layout.addWidget(self.chart_sort_column)
+        data_layout.addLayout(sort_layout)
         
-        # Sort order
         sort_order_layout = QHBoxLayout()
-        sort_order_layout.addWidget(QLabel("Sort Order:"))
         self.chart_sort_order = QComboBox()
         self.chart_sort_order.addItems(["Descending", "Ascending"])
         sort_order_layout.addWidget(self.chart_sort_order)
-        sorting_layout.addLayout(sort_order_layout)
+        data_layout.addLayout(sort_order_layout)
         
-        # Limit results
+        # Limit options
         limit_layout = QHBoxLayout()
-        self.chart_limit_checkbox = QCheckBox("Show only top")
-        limit_layout.addWidget(self.chart_limit_checkbox)
+        self.chart_limit_enabled = QCheckBox("Show only top")
+        self.chart_limit_enabled.setChecked(True)
+        limit_layout.addWidget(self.chart_limit_enabled)
         
         self.chart_limit_value = QSpinBox()
-        self.chart_limit_value.setRange(1, 50)
+        self.chart_limit_value.setMinimum(1)
+        self.chart_limit_value.setMaximum(100)
         self.chart_limit_value.setValue(10)
-        self.chart_limit_value.setSuffix(" items")
-        # The styling is now applied globally in StyleManager
         limit_layout.addWidget(self.chart_limit_value)
-        limit_layout.addStretch()
-        sorting_layout.addLayout(limit_layout)
         
-        # Finalize sorting group
-        sorting_group.setLayout(sorting_layout)
-        chart_controls_layout.addWidget(sorting_group)
+        data_layout.addLayout(limit_layout)
+        
+        data_group.setLayout(data_layout)
+        control_layout.addWidget(data_group)
         
         # Display options group
         display_group = QGroupBox("Display Options")
         display_layout = QVBoxLayout()
         
-        # Display checkboxes
-        self.chart_show_values = QCheckBox("Show values")
+        # Value labels
+        self.chart_show_values = QCheckBox("Show values on chart")
         self.chart_show_values.setChecked(True)
         display_layout.addWidget(self.chart_show_values)
         
-        self.chart_show_grid = QCheckBox("Show grid")
+        # Grid lines
+        self.chart_show_grid = QCheckBox("Show grid lines")
         self.chart_show_grid.setChecked(True)
         display_layout.addWidget(self.chart_show_grid)
         
-        # Finalize display group
         display_group.setLayout(display_layout)
-        chart_controls_layout.addWidget(display_group)
+        control_layout.addWidget(display_group)
         
-        # Action buttons
-        action_layout = QVBoxLayout()
+        # Export options group
+        export_group = QGroupBox("Export Options")
+        export_layout = QVBoxLayout()
         
-        # Remove the Apply Options button as we'll make all controls update immediately
-        # self.apply_chart_options = QPushButton("Apply Options")
-        # action_layout.addWidget(self.apply_chart_options)
+        # Save chart as image
+        self.save_chart_button = QPushButton("Save Chart as Image")
+        export_layout.addWidget(self.save_chart_button)
         
-        self.save_chart_button = QPushButton("Save Chart")
-        action_layout.addWidget(self.save_chart_button)
+        # Export chart data
+        self.export_chart_data_button = QPushButton("Export Chart Data")
+        export_layout.addWidget(self.export_chart_data_button)
         
-        # Add button layout to main layout
-        chart_controls_layout.addLayout(action_layout)
+        export_group.setLayout(export_layout)
+        control_layout.addWidget(export_group)
         
-        # Add stretch to push controls to the top
-        chart_controls_layout.addStretch(1)
+        # Add spacer at bottom to push controls to top
+        control_layout.addStretch()
         
-        # Set the layout for chart controls group
-        chart_controls_group.setLayout(chart_controls_layout)
-        left_layout.addWidget(chart_controls_group, 1)
+        # Add control panel to splitter
+        chart_splitter.addWidget(control_panel)
         
-        # Add left panel to splitter
-        charts_splitter.addWidget(left_panel)
+        # Create matplotlib canvas for the chart
+        chart_container = QWidget()
+        chart_layout = QVBoxLayout(chart_container)
+        chart_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Create right panel for chart
-        right_panel = QWidget()
-        right_layout = QVBoxLayout(right_panel)
-        right_layout.setContentsMargins(5, 5, 5, 5)
+        self.chart_canvas = MplCanvas(width=8, height=6, dpi=100)
+        chart_layout.addWidget(self.chart_canvas)
         
-        # Create a matplotlib figure
-        self.chart_figure = Figure(dpi=100)
-        self.chart_canvas = FigureCanvas(self.chart_figure)
+        # Add chart to splitter
+        chart_splitter.addWidget(chart_container)
         
-        # Set up the canvas to use all available space
-        self.chart_canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        right_layout.addWidget(self.chart_canvas, 1)
-        
-        # Add right panel to splitter
-        charts_splitter.addWidget(right_panel)
-        
-        # Set splitter sizes (30% controls, 70% chart)
-        charts_splitter.setSizes([300, 700])
+        # Set initial splitter sizes (30% controls, 70% chart)
+        chart_splitter.setSizes([300, 700])
         
         # Add splitter to main layout
-        layout.addWidget(charts_splitter, 1)
+        main_layout.addWidget(chart_splitter)
         
-        # Connect signals - make all controls update immediately
-        self.chart_group_by.currentIndexChanged.connect(self.update_chart_data_category)
-        self.chart_measure.currentIndexChanged.connect(self.update_chart_data_column)
-        self.chart_group_by.currentIndexChanged.connect(self.update_chart)
-        self.chart_measure.currentIndexChanged.connect(self.update_chart)
-        self.chart_type_selector.currentIndexChanged.connect(self.update_chart)
-        # Connect the remaining controls to update_chart for immediate updates
-        self.chart_sort_column.currentIndexChanged.connect(self.update_chart)
-        self.chart_sort_order.currentIndexChanged.connect(self.update_chart)
-        self.chart_limit_checkbox.stateChanged.connect(self.update_chart)
-        self.chart_limit_value.valueChanged.connect(self.update_chart)
-        self.chart_show_values.stateChanged.connect(self.update_chart)
-        self.chart_show_grid.stateChanged.connect(self.update_chart)
-        # Connect the save button to the save_chart method
-        self.save_chart_button.clicked.connect(self.save_chart)
+        # Update measures based on initial Group By selection
+        self.update_available_measures()
+        self.update_sort_options()
+        
+        # Update chart with initial selection
+        self.update_chart()
         
         if self.debug:
             print("Charts tab setup complete")
+
+    def setup_report_tab(self):
+        """
+        Set up the Report tab UI with comprehensive reporting capabilities.
+        
+        Creates a tab with controls for generating different types of reports,
+        options to include various report elements, and a text browser for
+        displaying the generated report. Also includes buttons for generating
+        and exporting reports.
+        """
+        # Create report tab widget if it doesn't exist
+        self.report_tab = QWidget()
+        main_layout = QVBoxLayout(self.report_tab)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+
+        # Create report controls in a group
+        controls_group = QGroupBox("Report Controls")
+        controls_layout = QGridLayout()
+
+        # Row 1: Report type selector
+        controls_layout.addWidget(QLabel("Report Type:"), 0, 0)
+        self.report_type_selector = QComboBox()
+        self.report_type_selector.addItems([
+            "Full Report",
+            "Player Performance",
+            "Chest Type Analysis",
+            "Source Analysis"
+        ])
+        controls_layout.addWidget(self.report_type_selector, 0, 1)
+
+        # Row 2: Include options
+        controls_layout.addWidget(QLabel("Include:"), 1, 0)
+
+        include_layout = QHBoxLayout()
+
+        self.include_charts_checkbox = QCheckBox("Charts")
+        self.include_charts_checkbox.setChecked(True)
+        include_layout.addWidget(self.include_charts_checkbox)
+
+        self.include_tables_checkbox = QCheckBox("Tables")
+        self.include_tables_checkbox.setChecked(True)
+        include_layout.addWidget(self.include_tables_checkbox)
+
+        self.include_stats_checkbox = QCheckBox("Statistics")
+        self.include_stats_checkbox.setChecked(True)
+        include_layout.addWidget(self.include_stats_checkbox)
+
+        include_layout.addStretch()
+        controls_layout.addLayout(include_layout, 1, 1)
+
+        # Action buttons row
+        button_layout = QHBoxLayout()
+
+        # Generate report button
+        self.generate_report_button = QPushButton("Generate Report")
+        button_layout.addWidget(self.generate_report_button)
+
+        # Export report button
+        self.export_report_button = QPushButton("Export Report")
+        button_layout.addWidget(self.export_report_button)
+
+        # Add button layout to controls
+        controls_layout.addLayout(button_layout, 2, 0, 1, 2)
+
+        controls_group.setLayout(controls_layout)
+
+        # Create report view
+        self.report_view = QTextBrowser()
+        self.report_view.setOpenExternalLinks(True)
+        self.report_view.setStyleSheet(f"""
+            QTextBrowser {{
+                background-color: #1A2742;
+                color: #FFFFFF;
+                border: 1px solid #3A4762;
+                padding: 10px;
+            }}
+        """)
+
+        # Add widgets to main layout
+        main_layout.addWidget(controls_group)
+        main_layout.addWidget(self.report_view, 1)  # Stretch factor 1 to expand with window
+
+        if self.debug:
+            print("Report tab setup complete")
+    
+    def generate_report(self):
+        """
+        Generate a report based on the current selections.
+
+        This method creates an HTML report based on the selected report type
+        and inclusion options. The report is displayed in the report_view widget.
+        """
+        try:
+            # Check if we have analysis results
+            if self.analysis_results is None or not self.analysis_results:
+                QMessageBox.warning(self, "Report Error", "No analysis results available. Please load data first.")
+                return
+                
+            # Get report parameters
+            report_type = self.report_type_selector.currentText()
+            include_charts = self.include_charts_checkbox.isChecked()
+            include_tables = self.include_tables_checkbox.isChecked()
+            include_stats = self.include_stats_checkbox.isChecked()
+                
+            # Show generation status
+            self.statusBar().showMessage(f"Generating {report_type}...")
+                
+            # Create HTML content based on report type
+            if report_type == "Full Report":
+                html_content = self.create_full_report_html(include_charts, include_tables, include_stats)
+            elif report_type == "Player Performance":
+                html_content = self.create_player_performance_html(include_charts, include_tables, include_stats)
+            elif report_type == "Chest Type Analysis":
+                html_content = self.create_chest_analysis_html(include_charts, include_tables, include_stats)
+            elif report_type == "Source Analysis":
+                html_content = self.create_source_analysis_html(include_charts, include_tables, include_stats)
+            else:
+                QMessageBox.warning(self, "Report Error", f"Unknown report type: {report_type}")
+                return
+                
+            # Set the HTML content to the report view
+            self.report_view.setHtml(html_content)
+                
+            # Update status
+            self.statusBar().showMessage(f"{report_type} generated successfully")
+                
+        except Exception as e:
+            log_error("Error generating report", e)
+            traceback.print_exc()
+            QMessageBox.warning(self, "Report Error", f"An error occurred while generating the report: {str(e)}")
+    
+    def create_full_report_html(self, include_charts, include_tables, include_stats):
+        """Create HTML content for the Full Report type"""
+        # Get current date and time for the report header
+        current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Colors from the dark theme
+        background_color = '#0E1629'    # Dark blue background
+        text_color = '#FFFFFF'          # White text
+        accent_color = '#D4AF37'        # Gold accent
+        border_color = '#2A3F5F'        # Border color
+        bg_light = '#1A2742'            # Lighter background
+
+        # Start with the HTML header and styling
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Total Battle Analyzer - Full Report</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: {background_color};
+                    color: {text_color};
+                    margin: 20px;
+                }}
+                h1, h2, h3, h4 {{
+                    color: {accent_color};
+                }}
+                .header {{
+                    border-bottom: 2px solid {accent_color};
+                    padding-bottom: 10px;
+                    margin-bottom: 20px;
+                }}
+                .section {{
+                    margin-bottom: 30px;
+                    background-color: {bg_light};
+                    padding: 15px;
+                    border-radius: 5px;
+                }}
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 15px 0;
+                }}
+                th, td {{
+                    border: 1px solid {border_color};
+                    padding: 8px;
+                    text-align: left;
+                }}
+                th {{
+                    background-color: {background_color};
+                    color: {accent_color};
+                }}
+                .chart-container {{
+                    margin: 20px 0;
+                    text-align: center;
+                }}
+                .footer {{
+                    margin-top: 30px;
+                    text-align: center;
+                    font-size: 0.8em;
+                    color: {text_color};
+                    border-top: 1px solid {border_color};
+                    padding-top: 10px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Total Battle Analyzer - Full Report</h1>
+                <p>Generated on: {current_datetime}</p>
+            </div>
+        """
+
+        # Overview Section
+        html += """
+        <div class="section">
+            <h2>Overview</h2>
+        """
+
+        if include_stats:
+            # Add basic statistics
+            if self.raw_data is not None and not self.raw_data.empty:
+                total_records = len(self.raw_data)
+                total_players = self.raw_data['PLAYER'].nunique()
+                total_score = self.raw_data['SCORE'].sum()
+                avg_score = self.raw_data['SCORE'].mean()
+                
+                html += f"""
+                <p>Total Records: {total_records}</p>
+                <p>Unique Players: {total_players}</p>
+                <p>Total Score: {total_score:.2f}</p>
+                <p>Average Score: {avg_score:.2f}</p>
+                """
+            else:
+                html += "<p>No data available for statistics</p>"
+                
+        html += "</div>"  # End of Overview section
+        
+        # Player Analysis Section
+        html += """
+        <div class="section">
+            <h2>Player Analysis</h2>
+        """
+
+        if include_charts and 'player_totals' in self.analysis_results:
+            # Generate a bar chart for player performance
+            chart_file = self.generate_chart_for_report('Bar Chart', 'PLAYER', 'Player Total Scores')
+            if chart_file:
+                html += f"""
+                <div class="chart-container">
+                    <img src="file:///{chart_file}" alt="Player Performance Chart" style="max-width:100%; height:auto;">
+                    <p>Player Performance Chart</p>
+                </div>
+                """
+            else:
+                html += """
+                <div class="chart-container">
+                    <p>[Could not generate Player Performance Chart]</p>
+                </div>
+                """
+            
+        if include_tables and 'player_totals' in self.analysis_results:
+            # Add player data table
+            player_df = self.analysis_results['player_totals']
+            if not player_df.empty:
+                # Convert DataFrame to HTML table
+                player_table = player_df.to_html(index=False, classes="table")
+                html += f"""
+                <h3>Player Data</h3>
+                {player_table}
+                """
+            else:
+                html += "<p>No player data available</p>"
+                
+        html += "</div>"  # End of Player Analysis section
+        
+        # Chest Analysis Section
+        html += """
+        <div class="section">
+            <h2>Chest Analysis</h2>
+        """
+
+        if include_charts and 'chest_totals' in self.analysis_results:
+            # Generate bar chart for chest value distribution
+            bar_chart_file = self.generate_chart_for_report('Bar Chart', 'CHEST', 'Scores by Chest Type')
+            if bar_chart_file:
+                html += f"""
+                <div class="chart-container">
+                    <img src="file:///{bar_chart_file}" alt="Chest Value Distribution Bar Chart" style="max-width:100%; height:auto;">
+                    <p>Chest Value Distribution (Bar Chart)</p>
+                </div>
+                """
+            
+            # Generate pie chart for chest value distribution
+            pie_chart_file = self.generate_chart_for_report('Pie Chart', 'CHEST', 'Scores by Chest Type')
+            if pie_chart_file:
+                html += f"""
+                <div class="chart-container">
+                    <img src="file:///{pie_chart_file}" alt="Chest Value Distribution Pie Chart" style="max-width:100%; height:auto;">
+                    <p>Chest Value Distribution (Pie Chart)</p>
+                </div>
+                """
+            
+            if not bar_chart_file and not pie_chart_file:
+                html += """
+                <div class="chart-container">
+                    <p>[Could not generate Chest Value Distribution Charts]</p>
+                </div>
+                """
+            
+        if include_tables and 'chest_totals' in self.analysis_results:
+            # Add chest data table
+            chest_df = self.analysis_results['chest_totals']
+            if not chest_df.empty:
+                # Convert DataFrame to HTML table
+                chest_table = chest_df.to_html(index=False, classes="table")
+                html += f"""
+                <h3>Chest Data</h3>
+                {chest_table}
+                """
+            else:
+                html += "<p>No chest data available</p>"
+                
+        html += "</div>"  # End of Chest Analysis section
+        
+        # Source Analysis Section
+        html += """
+        <div class="section">
+            <h2>Source Analysis</h2>
+        """
+
+        if include_charts and 'source_totals' in self.analysis_results:
+            # Generate source bar chart
+            bar_chart_file = self.generate_chart_for_report('Bar Chart', 'SOURCE', 'Scores by Source')
+            if bar_chart_file:
+                html += f"""
+                <div class="chart-container">
+                    <img src="file:///{bar_chart_file}" alt="Source Analysis Bar Chart" style="max-width:100%; height:auto;">
+                    <p>Source Score Distribution (Bar Chart)</p>
+                </div>
+                """
+            
+            # Generate source pie chart
+            pie_chart_file = self.generate_chart_for_report('Pie Chart', 'SOURCE', 'Scores by Source')
+            if pie_chart_file:
+                html += f"""
+                <div class="chart-container">
+                    <img src="file:///{pie_chart_file}" alt="Source Analysis Pie Chart" style="max-width:100%; height:auto;">
+                    <p>Source Score Distribution (Pie Chart)</p>
+                </div>
+                """
+            
+            if not bar_chart_file and not pie_chart_file:
+                html += """
+                <div class="chart-container">
+                    <p>[Could not generate Source Analysis Charts]</p>
+                </div>
+                """
+            
+        if include_tables and 'source_totals' in self.analysis_results:
+            # Add source data table
+            source_df = self.analysis_results['source_totals']
+            if not source_df.empty:
+                # Convert DataFrame to HTML table
+                source_table = source_df.to_html(index=False, classes="table")
+                html += f"""
+                <h3>Source Data</h3>
+                {source_table}
+                """
+            else:
+                html += "<p>No source data available</p>"
+                
+        html += "</div>"  # End of Source Analysis section
+        
+        # Date Analysis Section
+        html += """
+        <div class="section">
+            <h2>Date Analysis</h2>
+        """
+
+        if include_charts and 'date_totals' in self.analysis_results:
+            # Generate date line chart
+            chart_file = self.generate_chart_for_report('Bar Chart', 'DATE', 'Scores by Date')
+            if chart_file:
+                html += f"""
+                <div class="chart-container">
+                    <img src="file:///{chart_file}" alt="Date Analysis Chart" style="max-width:100%; height:auto;">
+                    <p>Score Distribution by Date</p>
+                </div>
+                """
+            else:
+                html += """
+                <div class="chart-container">
+                    <p>[Could not generate Date Analysis Chart]</p>
+                </div>
+                """
+            
+        if include_tables and 'date_totals' in self.analysis_results:
+            # Add date data table
+            date_df = self.analysis_results['date_totals']
+            if not date_df.empty:
+                # Convert DataFrame to HTML table
+                date_table = date_df.to_html(index=False, classes="table")
+                html += f"""
+                <h3>Date Data</h3>
+                {date_table}
+                """
+            else:
+                html += "<p>No date data available</p>"
+                
+        html += "</div>"  # End of Date Analysis section
+        
+        # Footer
+        html += f"""
+        <div class="footer">
+            <p>Total Battle Analyzer - Full Report generated on {current_datetime}</p>
+        </div>
+        </body>
+        </html>
+        """
+
+        return html
+    
+    def create_player_performance_html(self, include_charts=True, include_tables=True, include_stats=True):
+        """
+        Create HTML content for the Player Performance report.
+        
+        Args:
+            include_charts (bool): Whether to include charts in the report
+            include_tables (bool): Whether to include tables in the report
+            include_stats (bool): Whether to include statistics in the report
+            
+        Returns:
+            str: HTML content for the report
+        """
+        html = f"""
+        <div class="section">
+            <h2>Player Overview</h2>
+        """
+
+        if include_stats and 'player_totals' in self.analysis_results:
+            # Add player statistics
+            player_df = self.analysis_results['player_totals']
+            if not player_df.empty:
+                # Use 'SCORE' instead of 'TOTAL_SCORE' for player_totals
+                top_player = player_df.sort_values('SCORE', ascending=False).iloc[0]
+                total_players = len(player_df)
+                avg_score = player_df['SCORE'].mean()
+                
+                html += f"""
+                <p>Total Players: {total_players}</p>
+                <p>Average Score per Player: {avg_score:.2f}</p>
+                <p>Top Player: {top_player['PLAYER']} with {top_player['SCORE']:.2f} points</p>
+                """
+            else:
+                html += "<p>No player data available for statistics</p>"
+                
+        html += "</div>"  # End of Player Overview section
+        
+        # Player Performance Details Section
+        html += """
+        <div class="section">
+            <h2>Player Performance Details</h2>
+        """
+
+        if include_charts and 'player_totals' in self.analysis_results:
+            # Generate bar chart for player performance
+            bar_chart_file = self.generate_chart_for_report('Bar Chart', 'PLAYER', 'Player Total Scores')
+            if bar_chart_file:
+                html += f"""
+                <div class="chart-container">
+                    <img src="file:///{bar_chart_file}" alt="Player Performance Chart" style="max-width:100%; height:auto;">
+                    <p>Player Total Scores</p>
+                </div>
+                """
+            
+            # Generate bubble chart for player efficiency if we have the necessary data
+            player_df = self.analysis_results['player_totals']
+            if not player_df.empty and 'CHEST_COUNT' in player_df.columns and 'TOTAL_SCORE' in player_df.columns:
+                bubble_chart_file = self.generate_chart_for_report('Bubble Chart', 'PLAYER', 'Player Efficiency')
+                if bubble_chart_file:
+                    html += f"""
+                    <div class="chart-container">
+                        <img src="file:///{bubble_chart_file}" alt="Player Efficiency Chart" style="max-width:100%; height:auto;">
+                        <p>Player Efficiency (Score vs Chest Count)</p>
+                    </div>
+                    """
+            
+            # Generate stacked bar chart for player source breakdown
+            stacked_chart_file = self.generate_chart_for_report('Stacked Bar Chart', 'PLAYER', 'Player Overview')
+            if stacked_chart_file:
+                html += f"""
+                <div class="chart-container">
+                    <img src="file:///{stacked_chart_file}" alt="Player Source Breakdown" style="max-width:100%; height:auto;">
+                    <p>Player Scores by Source</p>
+                </div>
+                """
+            
+            if not bar_chart_file and (not 'bubble_chart_file' in locals() or not bubble_chart_file) and (not 'stacked_chart_file' in locals() or not stacked_chart_file):
+                html += """
+                <div class="chart-container">
+                    <p>[Could not generate Player Performance Charts]</p>
+                </div>
+                """
+            
+        if include_tables and 'player_totals' in self.analysis_results:
+            # Add player performance table
+            player_df = self.analysis_results['player_totals']
+            if not player_df.empty:
+                # Convert DataFrame to HTML table
+                player_table = player_df.to_html(index=False, classes="table")
+                html += f"""
+                <h3>Player Performance Data</h3>
+                {player_table}
+                """
+            else:
+                html += "<p>No player performance data available</p>"
+                
+        html += "</div>"  # End of Player Performance Details section
+        
+        # Player Efficiency Section
+        html += """
+        <div class="section">
+            <h2>Player Efficiency Analysis</h2>
+        """
+
+        if include_stats and 'player_totals' in self.analysis_results:
+            # Add player efficiency statistics
+            player_df = self.analysis_results['player_totals']
+            if not player_df.empty and 'CHEST_COUNT' in player_df.columns and 'TOTAL_SCORE' in player_df.columns:
+                # Calculate points per chest for each player
+                player_df['POINTS_PER_CHEST'] = player_df['TOTAL_SCORE'] / player_df['CHEST_COUNT'].replace(0, 1)
+                most_efficient_player = player_df.sort_values('POINTS_PER_CHEST', ascending=False).iloc[0]
+                
+                html += f"""
+                <p>Most Efficient Player: {most_efficient_player['PLAYER']} with {most_efficient_player['POINTS_PER_CHEST']:.2f} points per chest</p>
+                """
+                
+                # Show top 5 most efficient players
+                top_5_efficient = player_df.sort_values('POINTS_PER_CHEST', ascending=False).head(5)
+                efficient_table = top_5_efficient[['PLAYER', 'POINTS_PER_CHEST', 'TOTAL_SCORE', 'CHEST_COUNT']].to_html(index=False, classes="table")
+                
+                html += f"""
+                <h3>Top 5 Most Efficient Players</h3>
+                {efficient_table}
+                """
+            else:
+                html += "<p>No player efficiency data available</p>"
+                
+        html += "</div>"  # End of Player Efficiency section
+        
+        # Footer
+        html += f"""
+        <div class="footer">
+            <p>Total Battle Analyzer - Player Performance Report generated on {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+        </div>
+        </body>
+        </html>
+        """
+
+        return html
+    
+    def create_chest_analysis_html(self, include_charts, include_tables, include_stats):
+        """Create HTML content for the Chest Type Analysis report type"""
+        # Get current date and time for the report header
+        current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Colors from the dark theme
+        background_color = '#0E1629'    # Dark blue background
+        text_color = '#FFFFFF'          # White text
+        accent_color = '#D4AF37'        # Gold accent
+        border_color = '#2A3F5F'        # Border color
+        bg_light = '#1A2742'            # Lighter background
+
+        # Start with the HTML header and styling
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Total Battle Analyzer - Chest Type Analysis</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: {background_color};
+                    color: {text_color};
+                    margin: 20px;
+                }}
+                h1, h2, h3, h4 {{
+                    color: {accent_color};
+                }}
+                .header {{
+                    border-bottom: 2px solid {accent_color};
+                    padding-bottom: 10px;
+                    margin-bottom: 20px;
+                }}
+                .section {{
+                    margin-bottom: 30px;
+                    background-color: {bg_light};
+                    padding: 15px;
+                    border-radius: 5px;
+                }}
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 15px 0;
+                }}
+                th, td {{
+                    border: 1px solid {border_color};
+                    padding: 8px;
+                    text-align: left;
+                }}
+                th {{
+                    background-color: {background_color};
+                    color: {accent_color};
+                }}
+                .chart-container {{
+                    margin: 20px 0;
+                    text-align: center;
+                }}
+                .footer {{
+                    margin-top: 30px;
+                    text-align: center;
+                    font-size: 0.8em;
+                    color: {text_color};
+                    border-top: 1px solid {border_color};
+                    padding-top: 10px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Total Battle Analyzer - Chest Type Analysis</h1>
+                <p>Generated on: {current_datetime}</p>
+            </div>
+        """
+
+        # Chest Overview Section
+        html += """
+        <div class="section">
+            <h2>Chest Type Overview</h2>
+        """
+
+        if include_stats and 'chest_totals' in self.analysis_results:
+            # Add chest statistics
+            chest_df = self.analysis_results['chest_totals']
+            if not chest_df.empty:
+                total_chest_types = len(chest_df)
+                most_valuable_chest = chest_df.sort_values('SCORE', ascending=False).iloc[0]
+                total_score = chest_df['SCORE'].sum()
+                
+                html += f"""
+                <p>Total Chest Types: {total_chest_types}</p>
+                <p>Total Score from All Chests: {total_score:.2f}</p>
+                <p>Most Valuable Chest Type: {most_valuable_chest['CHEST']} with {most_valuable_chest['SCORE']:.2f} points</p>
+                """
+            else:
+                html += "<p>No chest data available for statistics</p>"
+                
+        html += "</div>"  # End of Chest Overview section
+        
+        # Chest Value Distribution Section
+        html += """
+        <div class="section">
+            <h2>Chest Value Distribution</h2>
+        """
+
+        if include_charts and 'chest_totals' in self.analysis_results:
+            # Add a placeholder for chest value distribution chart
+            html += """
+            <div class="chart-container">
+                <p>[Chest Value Distribution Chart would be displayed here]</p>
+            </div>
+            """
+            
+        if include_tables and 'chest_totals' in self.analysis_results:
+            # Add chest value distribution table
+            chest_df = self.analysis_results['chest_totals']
+            if not chest_df.empty:
+                # Convert DataFrame to HTML table
+                chest_table = chest_df.sort_values('SCORE', ascending=False).to_html(index=False, classes="table")
+                html += f"""
+                <h3>Chest Value Data (Sorted by Value)</h3>
+                {chest_table}
+                """
+            else:
+                html += "<p>No chest value distribution data available</p>"
+                
+        html += "</div>"  # End of Chest Value Distribution section
+        
+        # Footer
+        html += f"""
+        <div class="footer">
+            <p>Total Battle Analyzer - Chest Type Analysis Report generated on {current_datetime}</p>
+        </div>
+        </body>
+        </html>
+        """
+
+        return html
+    
+    def create_source_analysis_html(self, include_charts, include_tables, include_stats):
+        """Create HTML content for the Source Analysis report type"""
+        # Get current date and time for the report header
+        current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Colors from the dark theme
+        background_color = '#0E1629'    # Dark blue background
+        text_color = '#FFFFFF'          # White text
+        accent_color = '#D4AF37'        # Gold accent
+        border_color = '#2A3F5F'        # Border color
+        bg_light = '#1A2742'            # Lighter background
+
+        # Start with the HTML header and styling
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <title>Total Battle Analyzer - Source Analysis</title>
+            <style>
+                body {{
+                    font-family: Arial, sans-serif;
+                    background-color: {background_color};
+                    color: {text_color};
+                    margin: 20px;
+                }}
+                h1, h2, h3, h4 {{
+                    color: {accent_color};
+                }}
+                .header {{
+                    border-bottom: 2px solid {accent_color};
+                    padding-bottom: 10px;
+                    margin-bottom: 20px;
+                }}
+                .section {{
+                    margin-bottom: 30px;
+                    background-color: {bg_light};
+                    padding: 15px;
+                    border-radius: 5px;
+                }}
+                table {{
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin: 15px 0;
+                }}
+                th, td {{
+                    border: 1px solid {border_color};
+                    padding: 8px;
+                    text-align: left;
+                }}
+                th {{
+                    background-color: {background_color};
+                    color: {accent_color};
+                }}
+                .chart-container {{
+                    margin: 20px 0;
+                    text-align: center;
+                }}
+                .footer {{
+                    margin-top: 30px;
+                    text-align: center;
+                    font-size: 0.8em;
+                    color: {text_color};
+                    border-top: 1px solid {border_color};
+                    padding-top: 10px;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="header">
+                <h1>Total Battle Analyzer - Source Analysis</h1>
+                <p>Generated on: {current_datetime}</p>
+            </div>
+        """
+
+        # Source Overview Section
+        html += """
+        <div class="section">
+            <h2>Source Overview</h2>
+        """
+
+        if include_stats and 'source_totals' in self.analysis_results:
+            # Add source statistics
+            source_df = self.analysis_results['source_totals']
+            if not source_df.empty:
+                total_sources = len(source_df)
+                top_source = source_df.sort_values('SCORE', ascending=False).iloc[0]
+                total_score = source_df['SCORE'].sum()
+                
+                html += f"""
+                <p>Total Sources: {total_sources}</p>
+                <p>Total Score from All Sources: {total_score:.2f}</p>
+                <p>Most Valuable Source: {top_source['SOURCE']} with {top_source['SCORE']:.2f} points</p>
+                """
+            else:
+                html += "<p>No source data available for statistics</p>"
+                
+        html += "</div>"  # End of Source Overview section
+        
+        # Source Value Distribution Section
+        html += """
+        <div class="section">
+            <h2>Source Value Distribution</h2>
+        """
+
+        if include_charts and 'source_totals' in self.analysis_results:
+            # Generate bar chart for source value distribution
+            bar_chart_file = self.generate_chart_for_report('Bar Chart', 'SOURCE', 'Scores by Source')
+            if bar_chart_file:
+                html += f"""
+                <div class="chart-container">
+                    <img src="file:///{bar_chart_file}" alt="Source Value Distribution Bar Chart" style="max-width:100%; height:auto;">
+                    <p>Source Value Distribution (Bar Chart)</p>
+                </div>
+                """
+            
+            # Generate pie chart for source value distribution
+            pie_chart_file = self.generate_chart_for_report('Pie Chart', 'SOURCE', 'Scores by Source')
+            if pie_chart_file:
+                html += f"""
+                <div class="chart-container">
+                    <img src="file:///{pie_chart_file}" alt="Source Value Distribution Pie Chart" style="max-width:100%; height:auto;">
+                    <p>Source Value Distribution (Pie Chart)</p>
+                </div>
+                """
+            
+            if not bar_chart_file and not pie_chart_file:
+                html += """
+                <div class="chart-container">
+                    <p>[Could not generate Source Value Distribution Charts]</p>
+                </div>
+                """
+            
+        if include_tables and 'source_totals' in self.analysis_results:
+            # Add source value distribution table
+            source_df = self.analysis_results['source_totals']
+            if not source_df.empty:
+                # Convert DataFrame to HTML table
+                source_table = source_df.sort_values('SCORE', ascending=False).to_html(index=False, classes="table")
+                html += f"""
+                <h3>Source Value Data (Sorted by Value)</h3>
+                {source_table}
+                """
+            else:
+                html += "<p>No source value distribution data available</p>"
+                
+        html += "</div>"  # End of Source Value Distribution section
+        
+        # Footer
+        html += f"""
+        <div class="footer">
+            <p>Total Battle Analyzer - Source Analysis Report generated on {current_datetime}</p>
+        </div>
+        </body>
+        </html>
+        """
+
+        return html
+        
+    def export_report(self):
+        """
+        Export the currently displayed report to HTML or PDF.
+        
+        This method allows the user to save the current report as an HTML or
+        PDF file for sharing or future reference.
+        """
+        try:
+            # Check if there is a report to export
+            if not self.report_view.toHtml():
+                QMessageBox.warning(self, "Export Error", "No report to export. Please generate a report first.")
+                return
+
+            # Get report type
+            report_type = self.report_type_selector.currentText()
+
+            # Create a suggested filename based on the report type
+            filename_safe_report_type = report_type.replace(" ", "_")
+            suggested_filename = f"TotalBattle_{filename_safe_report_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+            # Get the export directory from config
+            export_dir = Path(self.config_manager.get_export_directory())
+            if not export_dir.exists():
+                export_dir.mkdir(parents=True, exist_ok=True)
+
+            # Show file dialog to select export format and location
+            export_options = "HTML Files (*.html);;PDF Files (*.pdf)"
+            filepath, selected_filter = QFileDialog.getSaveFileName(
+                self, "Export Report", str(export_dir / suggested_filename), export_options
+            )
+
+            if not filepath:
+                return
+
+            # Save the current directory for next time
+            self.config_manager.set_export_directory(str(Path(filepath).parent))
+
+            if selected_filter == "HTML Files (*.html)":
+                # Export as HTML
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    f.write(self.report_view.toHtml())
+                    
+                self.statusBar().showMessage(f"Report exported as HTML: {filepath}")
+            
+            elif selected_filter == "PDF Files (*.pdf)":
+                # Export as PDF
+                printer = QPrinter(QPrinter.HighResolution)
+                printer.setOutputFormat(QPrinter.PdfFormat)
+                printer.setOutputFileName(filepath)
+                self.report_view.print_(printer)
+                
+                self.statusBar().showMessage(f"Report exported as PDF: {filepath}")
+            
+            # Show success message
+            QMessageBox.information(self, "Export Successful", f"Report exported to:\n{filepath}")
+            
+        except Exception as e:
+            log_error("Error exporting report", e)
+            traceback.print_exc()
+            QMessageBox.warning(self, "Export Error", f"An error occurred while exporting the report: {str(e)}")
             
     def update_chart_data_category(self):
         """Update the data category based on the selected Group By dimension.
@@ -1903,11 +2774,11 @@ class MainWindow(QMainWindow):
         This updates the internal chart_data_category combobox which is still used
         by other functions for compatibility.
         """
-        if not hasattr(self, 'chart_group_by'):
+        if not hasattr(self, 'chart_data_category'):
             return
             
         # Get the selected group by dimension
-        group_by = self.chart_group_by.currentText()
+        group_by = self.chart_data_category.currentText()
         
         # Update the hidden data category combobox (for compatibility)
         if group_by == "PLAYER":
@@ -1927,39 +2798,39 @@ class MainWindow(QMainWindow):
             
     def update_available_measures(self):
         """Update the available measures based on the selected Group By dimension."""
-        if not hasattr(self, 'chart_group_by') or not hasattr(self, 'chart_measure'):
+        if not hasattr(self, 'chart_data_category') or not hasattr(self, 'chart_data_column'):
             return
             
         # Save current selection if possible
-        current_measure = self.chart_measure.currentText() if self.chart_measure.count() > 0 else ""
+        current_measure = self.chart_data_column.currentText() if self.chart_data_column.count() > 0 else ""
             
         # Clear existing items
-        self.chart_measure.clear()
+        self.chart_data_column.clear()
         
         # Get the selected group by dimension
-        group_by = self.chart_group_by.currentText()
+        group_by = self.chart_data_category.currentText()
         
         # Add appropriate measure options based on group by dimension
         if group_by == "PLAYER":
-            self.chart_measure.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_SCORE"])
+            self.chart_data_column.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_SCORE"])
         elif group_by == "CHEST":
-            self.chart_measure.addItems(["SCORE", "CHEST_COUNT"])
+            self.chart_data_column.addItems(["SCORE", "CHEST_COUNT"])
         elif group_by == "SOURCE":
-            self.chart_measure.addItems(["SCORE", "CHEST_COUNT"])
+            self.chart_data_column.addItems(["SCORE", "CHEST_COUNT"])
         elif group_by == "DATE":
-            self.chart_measure.addItems(["SCORE", "CHEST_COUNT"])
+            self.chart_data_column.addItems(["SCORE", "CHEST_COUNT"])
         
         # Restore previous selection if it's still valid
-        index = self.chart_measure.findText(current_measure)
+        index = self.chart_data_column.findText(current_measure)
         if index >= 0:
-            self.chart_measure.setCurrentIndex(index)
+            self.chart_data_column.setCurrentIndex(index)
         
         # Update the sort column options as well
         self.update_sort_options()
         
     def update_sort_options(self):
         """Update the available sort options based on the selected Group By dimension and Measure."""
-        if not hasattr(self, 'chart_group_by') or not hasattr(self, 'chart_sort_column'):
+        if not hasattr(self, 'chart_data_category') or not hasattr(self, 'chart_sort_column'):
             return
             
         # Save current selection if possible
@@ -1969,8 +2840,8 @@ class MainWindow(QMainWindow):
         self.chart_sort_column.clear()
         
         # Get the selected group by dimension and measure
-        group_by = self.chart_group_by.currentText()
-        measure = self.chart_measure.currentText() if hasattr(self, 'chart_measure') else ""
+        group_by = self.chart_data_category.currentText()
+        measure = self.chart_data_column.currentText() if hasattr(self, 'chart_data_column') else ""
         
         # Add appropriate sort options based on group by dimension
         if group_by == "PLAYER":
@@ -1997,11 +2868,11 @@ class MainWindow(QMainWindow):
         This updates the internal chart_data_column combobox which is still used
         by other functions for compatibility.
         """
-        if not hasattr(self, 'chart_measure'):
+        if not hasattr(self, 'chart_data_column'):
             return
             
         # Get the selected measure
-        measure = self.chart_measure.currentText()
+        measure = self.chart_data_column.currentText()
         
         # Now we directly set the measure to the column name since they match
         # (CHEST_COUNT, SCORE, etc.) in all datasets
@@ -2049,41 +2920,46 @@ class MainWindow(QMainWindow):
             self.update_chart()
 
     def connect_signals(self):
-        """Connect signals to slots."""
-        # File menu actions
-        if hasattr(self, 'action_open_csv'):
-            self.action_open_csv.triggered.connect(self.open_csv_file)
-        if hasattr(self, 'action_quit'):
-            self.action_quit.triggered.connect(self.close)
+        """Connect all signals to slots for the application."""
+        # Import area signals
+        self.import_area.select_button.clicked.connect(self.import_area.open_file_dialog)
+        self.import_area.fileSelected.connect(self.load_csv_file)
         
-        # Help menu actions
-        if hasattr(self, 'action_about'):
-            self.action_about.triggered.connect(self.show_about_dialog)
+        # Menu actions
+        # Create file menu if not already created
+        if not hasattr(self, 'file_menu'):
+            self.file_menu = self.menuBar().addMenu("&File")
+            self.action_import_csv = self.file_menu.addAction("&Import CSV")
+            self.action_exit = self.file_menu.addAction("E&xit")
         
-        # Tab widget
-        self.tab_widget.currentChanged.connect(self.on_tab_changed)
+        # Connect menu actions
+        if hasattr(self, 'action_import_csv'):
+            # Safely disconnect if connected
+            try:
+                self.action_import_csv.triggered.disconnect()
+            except TypeError:
+                # Signal was not connected, which is fine
+                pass
+            self.action_import_csv.triggered.connect(self.import_area.open_file_dialog)
         
-        # Import tab
-        if hasattr(self, 'import_area'):
-            self.import_area.fileSelected.connect(self.load_csv_file)
+        if hasattr(self, 'action_exit'):
+            self.action_exit.triggered.connect(self.close)
         
-        # Raw Data tab
-        if hasattr(self, 'column_selector'):
-            self.column_selector.currentIndexChanged.connect(self.update_filter_options)
-        if hasattr(self, 'show_value_selection'):
-            self.show_value_selection.stateChanged.connect(self.toggle_value_selection)
-        if hasattr(self, 'select_all_button'):
-            self.select_all_button.clicked.connect(self.select_all_values)
-        if hasattr(self, 'deselect_all_button'):
-            self.deselect_all_button.clicked.connect(self.deselect_all_values)
+        # Raw data filter signals
         if hasattr(self, 'apply_filter_button'):
             self.apply_filter_button.clicked.connect(self.apply_filter)
         if hasattr(self, 'reset_filter_button'):
             self.reset_filter_button.clicked.connect(self.reset_filter)
-        if hasattr(self, 'export_raw_data_button'):
-            self.export_raw_data_button.clicked.connect(self.export_raw_data)
+        if hasattr(self, 'select_all_button'):
+            self.select_all_button.clicked.connect(self.select_all_values)
+        if hasattr(self, 'deselect_all_button'):
+            self.deselect_all_button.clicked.connect(self.deselect_all_values)
+        if hasattr(self, 'column_selector'):
+            self.column_selector.currentIndexChanged.connect(self.update_filter_options)
+        if hasattr(self, 'show_value_selection'):
+            self.show_value_selection.stateChanged.connect(self.toggle_value_selection)
         
-        # Analysis tab
+        # Analysis filter signals
         if hasattr(self, 'analysis_column_selector'):
             self.analysis_column_selector.currentIndexChanged.connect(self.update_analysis_filter_options)
         if hasattr(self, 'analysis_show_value_selection'):
@@ -2096,22 +2972,78 @@ class MainWindow(QMainWindow):
             self.apply_analysis_filter_button.clicked.connect(self.apply_analysis_filter)
         if hasattr(self, 'reset_analysis_filter_button'):
             self.reset_analysis_filter_button.clicked.connect(self.reset_analysis_filter)
+        
+        # Export buttons
+        if hasattr(self, 'export_raw_data_button'):
+            self.export_raw_data_button.clicked.connect(self.export_raw_data)
         if hasattr(self, 'export_analysis_button'):
             self.export_analysis_button.clicked.connect(self.export_analysis_data)
+        
+        # Analysis view selector
         if hasattr(self, 'analysis_selector'):
             self.analysis_selector.currentIndexChanged.connect(self.update_analysis_view)
+        
+        # Chart signals
+        if hasattr(self, 'chart_data_category'):
+            self.chart_data_category.currentIndexChanged.connect(self.update_sort_options)
+            
+            # Connect chart update button if it exists
+            if hasattr(self, 'chart_update_button'):
+                self.chart_update_button.clicked.connect(self.update_chart)
+            
+            # Connect chart export button if it exists
+            if hasattr(self, 'chart_export_button'):
+                self.chart_export_button.clicked.connect(self.export_chart)
+            elif hasattr(self, 'save_chart_button'):
+                self.save_chart_button.clicked.connect(self.save_chart)
+            
+            # Connect all chart options to update_chart if they exist
+            options_to_connect = [
+                'chart_data_column', 'chart_type_selector',
+                'chart_sort_column', 'chart_sort_order',
+                'chart_limit_enabled', 'chart_limit_value',
+                'chart_show_values', 'chart_show_grid'
+            ]
+            
+            for option_name in options_to_connect:
+                if hasattr(self, option_name):
+                    option = getattr(self, option_name)
+                    if isinstance(option, QComboBox):
+                        option.currentIndexChanged.connect(self.update_chart)
+                    elif isinstance(option, QCheckBox):
+                        option.stateChanged.connect(self.update_chart)
+                    elif isinstance(option, QSpinBox):
+                        option.valueChanged.connect(self.update_chart)
+                    
+        # Report signals
+        if hasattr(self, 'report_type_selector'):
+            if hasattr(self, 'report_generate_button'):
+                self.report_generate_button.clicked.connect(self.generate_report)
+            elif hasattr(self, 'generate_report_button'):
+                self.generate_report_button.clicked.connect(self.generate_report)
+                
+            if hasattr(self, 'report_export_button'):
+                self.report_export_button.clicked.connect(self.export_report)
+            elif hasattr(self, 'export_report_button'):
+                self.export_report_button.clicked.connect(self.export_report)
+        
+        if self.debug:
+            print("All signals connected")
 
     def open_csv_file(self):
-        """Open a CSV file using a file dialog."""
+        """Open a file dialog to select a CSV file and load it."""
+        # Redirect to ImportArea's file dialog to prevent duplication
+        self.import_area.open_file_dialog()
+        
+        # Legacy code kept for reference
+        """
         file_path, _ = QFileDialog.getOpenFileName(
-            self,
-            "Open CSV File",
-            str(self.import_dir),
-            "CSV Files (*.csv);;All Files (*)"
+            self, "Open CSV File", "", "CSV Files (*.csv)"
         )
         
         if file_path:
             self.load_csv_file(file_path)
+        """
 
     def export_raw_data(self):
         """Export the currently displayed raw data to a CSV file."""
@@ -2312,3 +3244,261 @@ class MainWindow(QMainWindow):
                 f"An error occurred while exporting: {str(e)}",
                 QMessageBox.Ok
             )
+
+    def generate_chart_for_report(self, chart_type, category_field, title):
+        """
+        Generate a chart image for the report.
+        
+        This helper method creates a chart image file that can be included in HTML reports.
+        
+        Args:
+            chart_type (str): The type of chart to generate (e.g., 'Bar Chart', 'Pie Chart')
+            category_field (str): The field to use for categorization (e.g., 'PLAYER', 'CHEST')
+            title (str): The title of the chart
+            
+        Returns:
+            str: The path to the generated chart image file, or None on failure
+        """
+        try:
+            # Create a temporary file for the chart
+            temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+            temp_file.close()
+            
+            # Determine which dataset to use based on category_field
+            if category_field == 'PLAYER':
+                if 'player_totals' not in self.analysis_results or self.analysis_results['player_totals'].empty:
+                    return None
+                df = self.analysis_results['player_totals']
+            elif category_field == 'CHEST':
+                if 'chest_totals' not in self.analysis_results or self.analysis_results['chest_totals'].empty:
+                    return None
+                df = self.analysis_results['chest_totals']
+            elif category_field == 'SOURCE':
+                if 'source_totals' not in self.analysis_results or self.analysis_results['source_totals'].empty:
+                    return None
+                df = self.analysis_results['source_totals']
+            elif category_field == 'DATE':
+                if 'date_totals' not in self.analysis_results or self.analysis_results['date_totals'].empty:
+                    return None
+                df = self.analysis_results['date_totals']
+            else:
+                return None
+            
+            # Create the figure for the chart
+            plt.figure(figsize=(10, 6), facecolor='#1A2742')
+            
+            # Set the style for the chart - dark background with white text
+            plt.style.use('dark_background')
+            
+            # Get current axis
+            ax = plt.gca()
+            
+            # Set axis colors
+            ax.set_facecolor('#1A2742')
+            ax.xaxis.label.set_color('#FFFFFF')
+            ax.yaxis.label.set_color('#FFFFFF')
+            ax.title.set_color('#D4AF37')
+            ax.tick_params(colors='#FFFFFF')
+            
+            # Define Tableau-like colors for consistent styling
+            TABLEAU_COLORS = [
+                '#D4AF37',  # Gold
+                '#5991C4',  # Blue
+                '#6EC1A7',  # Green
+                '#D46A5F',  # Red
+                '#A073D1',  # Purple
+                '#F49E5D',  # Orange
+                '#9DC375',  # Light Green
+                '#C4908F',  # Rose
+                '#8595A8',  # Gray Blue
+                '#D9A471',  # Tan
+            ]
+            
+            # Generate the appropriate type of chart
+            if chart_type == 'Bar Chart':
+                if category_field == 'PLAYER':
+                    # Use TOTAL_SCORE for players if available
+                    score_col = 'TOTAL_SCORE' if 'TOTAL_SCORE' in df.columns else 'SCORE'
+                    data = df.sort_values(score_col, ascending=False).head(15)  # Limit to top 15 for readability
+                    bars = plt.bar(data['PLAYER'], data[score_col], color=TABLEAU_COLORS)
+                    plt.xticks(rotation=45, ha='right', color='white')
+                    plt.ylabel('Score', color='white')
+                    plt.title('Player Total Scores', color='#D4AF37', fontsize=14)
+                    
+                    # Add values on top of bars
+                    for bar in bars:
+                        height = bar.get_height()
+                        plt.text(bar.get_x() + bar.get_width()/2., height,
+                              f'{height:,.0f}', ha='center', va='bottom', color='white', fontweight='bold')
+                    
+                elif category_field == 'CHEST':
+                    data = df.sort_values('SCORE', ascending=False)
+                    bars = plt.bar(data['CHEST'], data['SCORE'], color=TABLEAU_COLORS)
+                    plt.xticks(rotation=45, ha='right', color='white')
+                    plt.ylabel('Score', color='white')
+                    plt.title('Scores by Chest Type', color='#D4AF37', fontsize=14)
+                    
+                    # Add values on top of bars
+                    for bar in bars:
+                        height = bar.get_height()
+                        plt.text(bar.get_x() + bar.get_width()/2., height,
+                              f'{height:,.0f}', ha='center', va='bottom', color='white', fontweight='bold')
+                    
+                elif category_field == 'SOURCE':
+                    data = df.sort_values('SCORE', ascending=False)
+                    bars = plt.bar(data['SOURCE'], data['SCORE'], color=TABLEAU_COLORS)
+                    plt.xticks(rotation=45, ha='right', color='white')
+                    plt.ylabel('Score', color='white')
+                    plt.title('Scores by Source', color='#D4AF37', fontsize=14)
+                    
+                    # Add values on top of bars
+                    for bar in bars:
+                        height = bar.get_height()
+                        plt.text(bar.get_x() + bar.get_width()/2., height,
+                              f'{height:,.0f}', ha='center', va='bottom', color='white', fontweight='bold')
+                    
+                elif category_field == 'DATE':
+                    # For dates, sort chronologically and use a line chart instead of bar
+                    data = df.sort_values('DATE')
+                    plt.plot(data['DATE'], data['SCORE'], marker='o', color=TABLEAU_COLORS[0], linewidth=2)
+                    plt.xticks(rotation=45, ha='right', color='white')
+                    plt.ylabel('Score', color='white')
+                    plt.title('Scores by Date', color='#D4AF37', fontsize=14)
+                    plt.grid(True, alpha=0.3, color='#3A4762')
+                    
+                    # Add values on data points
+                    for i, value in enumerate(data['SCORE']):
+                        plt.annotate(f'{value:,.0f}', 
+                                  (data['DATE'].iloc[i], value),
+                                  textcoords="offset points", 
+                                  xytext=(0,10), 
+                                  ha='center',
+                                  color='white',
+                                  fontweight='bold')
+                
+            elif chart_type == 'Pie Chart':
+                if category_field == 'CHEST':
+                    data = df.sort_values('SCORE', ascending=False)
+                    wedges, texts, autotexts = plt.pie(data['SCORE'], labels=data['CHEST'], autopct='%1.1f%%', 
+                           startangle=90, colors=TABLEAU_COLORS)
+                    plt.axis('equal')
+                    plt.title('Chest Type Distribution by Score', color='#D4AF37', fontsize=14)
+                    
+                    # Make text visible on dark background
+                    for text in texts:
+                        text.set_color('white')
+                    for autotext in autotexts:
+                        autotext.set_color('white')
+                        autotext.set_fontweight('bold')
+                        
+                elif category_field == 'SOURCE':
+                    data = df.sort_values('SCORE', ascending=False)
+                    wedges, texts, autotexts = plt.pie(data['SCORE'], labels=data['SOURCE'], autopct='%1.1f%%', 
+                           startangle=90, colors=TABLEAU_COLORS)
+                    plt.axis('equal')
+                    plt.title('Source Distribution by Score', color='#D4AF37', fontsize=14)
+                    
+                    # Make text visible on dark background
+                    for text in texts:
+                        text.set_color('white')
+                    for autotext in autotexts:
+                        autotext.set_color('white')
+                        autotext.set_fontweight('bold')
+                
+            elif chart_type == 'Stacked Bar Chart' and category_field == 'PLAYER':
+                # Get the player and source columns
+                player_col = 'PLAYER'
+                
+                # Get columns that represent sources (but not the special columns)
+                data_cols = [col for col in df.columns if col not in 
+                            ['PLAYER', 'TOTAL_SCORE', 'CHEST_COUNT', 'AVG_SCORE']]
+                
+                if data_cols:
+                    # Sort by total score
+                    if 'TOTAL_SCORE' in df.columns:
+                        data = df.sort_values('TOTAL_SCORE', ascending=False).head(10)  # Limit to top 10
+                    else:
+                        data = df.head(10)  # Just use first 10 rows if no TOTAL_SCORE
+                    
+                    # Create the stacked bar chart
+                    bottom = np.zeros(len(data))
+                    for i, col in enumerate(data_cols):
+                        if col in data.columns:
+                            values = data[col].fillna(0).values
+                            plt.bar(data[player_col], values, bottom=bottom, 
+                                   label=col, color=TABLEAU_COLORS[i % len(TABLEAU_COLORS)])
+                            bottom += values
+                    
+                    plt.xticks(rotation=45, ha='right', color='white')
+                    plt.ylabel('Score', color='white')
+                    plt.title('Player Scores by Source', color='#D4AF37', fontsize=14)
+                    
+                    # Customize legend
+                    legend = plt.legend(title='Source', bbox_to_anchor=(1.05, 1), loc='upper left')
+                    legend.get_title().set_color('white')
+                    for text in legend.get_texts():
+                        text.set_color('white')
+                    
+                    plt.tight_layout()
+            
+            elif chart_type == 'Bubble Chart' and category_field == 'PLAYER':
+                # Check if we have the necessary columns
+                if 'TOTAL_SCORE' in df.columns and 'CHEST_COUNT' in df.columns:
+                    # Filter out any rows with zeroes to avoid divide by zero
+                    data = df[(df['TOTAL_SCORE'] > 0) & (df['CHEST_COUNT'] > 0)]
+                    
+                    if not data.empty:
+                        # Calculate efficiency for sizing the bubbles
+                        efficiency = data['TOTAL_SCORE'] / data['CHEST_COUNT']
+                        
+                        # Calculate sizes proportional to efficiency
+                        max_size = 1000
+                        min_size = 100
+                        if efficiency.max() > efficiency.min():
+                            size_scale = ((efficiency - efficiency.min()) / 
+                                         (efficiency.max() - efficiency.min())) * (max_size - min_size) + min_size
+                        else:
+                            size_scale = np.ones(len(efficiency)) * max_size
+                        
+                        # Create the bubble chart
+                        scatter = plt.scatter(data['CHEST_COUNT'], data['TOTAL_SCORE'], 
+                                            s=size_scale, alpha=0.6, 
+                                            c=range(len(data)), cmap='viridis')
+                        
+                        # Add player labels
+                        for i, player in enumerate(data['PLAYER']):
+                            plt.annotate(player, 
+                                        (data['CHEST_COUNT'].iloc[i], data['TOTAL_SCORE'].iloc[i]),
+                                        xytext=(5, 5), textcoords='offset points',
+                                        color='white', fontweight='bold')
+                        
+                        plt.xlabel('Chest Count', color='white')
+                        plt.ylabel('Total Score', color='white')
+                        plt.title('Player Efficiency (Score vs Chest Count)', color='#D4AF37', fontsize=14)
+                        
+                        # Add a colorbar to show efficiency
+                        colorbar = plt.colorbar(scatter)
+                        colorbar.set_label('Efficiency (pts/chest)', color='white')
+                        colorbar.ax.yaxis.set_tick_params(color='white')
+                        plt.setp(plt.getp(colorbar.ax.axes, 'yticklabels'), color='white')
+            
+            # Set spine colors to match theme
+            for spine in ax.spines.values():
+                spine.set_color('#3A4762')
+            
+            # Setup grid
+            ax.grid(True, color='#3A4762', linestyle='--', alpha=0.3)
+            
+            # Adjust layout and save with transparent background
+            plt.tight_layout()
+            plt.savefig(temp_file.name, format='png', dpi=150, bbox_inches='tight', 
+                      facecolor='#1A2742', edgecolor='none')
+            plt.close()
+            
+            return temp_file.name
+            
+        except Exception as e:
+            print(f"Error generating chart for report: {e}")
+            traceback.print_exc()
+            return None
+

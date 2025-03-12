@@ -1,0 +1,147 @@
+                    else:
+                        data = df.head(10)  # Just use first 10 rows if no TOTAL_SCORE
+                    
+                    # Create the stacked bar chart
+                    bottom = np.zeros(len(data))
+                    for i, col in enumerate(data_cols):
+                        if col in data.columns:
+                            values = data[col].fillna(0).values
+                            plt.bar(data[player_col], values, bottom=bottom, 
+                                   label=col, color=TABLEAU_COLORS[i % len(TABLEAU_COLORS)])
+                            bottom += values
+                    
+                    plt.xticks(rotation=45, ha='right')
+                    plt.ylabel('Score')
+                    plt.title(title)
+                    
+                    # Customize legend
+                    legend = plt.legend(title='Source', bbox_to_anchor=(1.05, 1), loc='upper left')
+                    legend.get_title().set_color(self.chart_canvas.style_presets['default']['text_color'])
+                    for text in legend.get_texts():
+                        text.set_color(self.chart_canvas.style_presets['default']['text_color'])
+                    
+                    plt.tight_layout()
+            
+            elif chart_type == 'Bubble Chart' and category_field == 'PLAYER':
+                # Check if we have the necessary columns
+                if 'TOTAL_SCORE' in df.columns and 'CHEST_COUNT' in df.columns:
+                    # Filter out any rows with zeroes to avoid divide by zero
+                    data = df[(df['TOTAL_SCORE'] > 0) & (df['CHEST_COUNT'] > 0)]
+                    
+                    if not data.empty:
+                        # Calculate efficiency for sizing the bubbles
+                        efficiency = data['TOTAL_SCORE'] / data['CHEST_COUNT']
+                        
+                        # Calculate sizes proportional to efficiency
+                        max_size = 1000
+                        min_size = 100
+                        if efficiency.max() > efficiency.min():
+                            size_scale = ((efficiency - efficiency.min()) / 
+                                         (efficiency.max() - efficiency.min())) * (max_size - min_size) + min_size
+                        else:
+                            size_scale = np.ones(len(efficiency)) * max_size
+                        
+                        # Create the bubble chart
+                        scatter = plt.scatter(data['CHEST_COUNT'], data['TOTAL_SCORE'], 
+                                            s=size_scale, alpha=0.6, 
+                                            c=range(len(data)), cmap='viridis')
+                        
+                        # Add player labels
+                        for i, player in enumerate(data['PLAYER']):
+                            plt.annotate(player, 
+                                        (data['CHEST_COUNT'].iloc[i], data['TOTAL_SCORE'].iloc[i]),
+                                        xytext=(5, 5), textcoords='offset points',
+                                        color='white', fontweight='bold')
+                        
+                        plt.xlabel('Chest Count')
+                        plt.ylabel('Total Score')
+                        plt.title(title)
+                        
+                        # Add a colorbar to show efficiency
+                        colorbar = plt.colorbar(scatter)
+                        colorbar.set_label('Efficiency (pts/chest)', color=self.chart_canvas.style_presets['default']['text_color'])
+                        colorbar.ax.yaxis.set_tick_params(color=self.chart_canvas.style_presets['default']['text_color'])
+                        plt.setp(plt.getp(colorbar.ax.axes, 'yticklabels'), color=self.chart_canvas.style_presets['default']['text_color'])
+            
+            # Adjust layout and save with transparent background
+            plt.tight_layout()
+            plt.savefig(temp_file.name, format='png', dpi=150, bbox_inches='tight', 
+                      facecolor=self.chart_canvas.style_presets['default']['bg_color'], edgecolor='none')
+            plt.close()
+            
+            return temp_file.name
+            
+        except Exception as e:
+            print(f"Error generating chart for report: {e}")
+            traceback.print_exc()
+            return None
+
+    def setup_ui_components(self):
+        """Set up the UI components."""
+        # Create central widget and main layout
+        central_widget = QWidget()
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
+        
+        # Create tab widget
+        self.tabWidget = QTabWidget()
+        self.tabWidget.setTabPosition(QTabWidget.North)
+        self.tabWidget.setMovable(False)
+        
+        # Create tabs
+        self.import_tab = QWidget()
+        self.raw_data_tab = QWidget()
+        self.analysis_tab = QWidget()
+        self.charts_tab = QWidget()
+        self.report_tab = QWidget()
+        
+        # Setup tabs
+        self.setup_import_tab()
+        self.setup_raw_data_tab()
+        self.setup_analysis_tab()
+        self.setup_charts_tab()
+        self.setup_report_tab()
+        
+        # Add tabs to widget
+        self.tabWidget.addTab(self.import_tab, "Import")
+        self.tabWidget.addTab(self.raw_data_tab, "Raw Data")
+        self.tabWidget.addTab(self.analysis_tab, "Analysis")
+        self.tabWidget.addTab(self.charts_tab, "Charts")
+        self.tabWidget.addTab(self.report_tab, "Report")
+        
+        # Add tab widget to main layout
+        main_layout.addWidget(self.tabWidget)
+        
+        # Set central widget
+        self.setCentralWidget(central_widget)
+        
+        # Setup status bar
+        self.statusBar().showMessage("Ready")
+        
+        # Setup menus
+        self.setup_menus()
+        
+        if self.debug:
+            print("UI components set up")
+            
+    def setup_menus(self):
+        """Set up the application menus."""
+        # Create menu bar
+        self.file_menu = self.menuBar().addMenu("&File")
+        
+        # Add actions to File menu
+        self.import_action = self.file_menu.addAction("&Import CSV")
+        self.import_action.triggered.connect(self.open_csv_file)
+        
+        self.export_action = self.file_menu.addAction("&Export Results")
+        self.export_action.triggered.connect(lambda: self.tabWidget.setCurrentIndex(4))  # Switch to Export tab
+        
+        self.file_menu.addSeparator()
+        
+        self.exit_action = self.file_menu.addAction("E&xit")
+        self.exit_action.triggered.connect(self.close)
+        
+        if self.debug:
+            print("Menus set up")
+

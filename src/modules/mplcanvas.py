@@ -29,9 +29,9 @@ class MplCanvas(FigureCanvas):
                 'title_color': '#D4AF37',  # Gold title
                 'title_size': 14,
                 'label_size': 12,
-                'bar_colors': ['#D4AF37', '#345995', '#56A64B', '#A6564B'],  # Gold, Blue, Green, Red
-                'pie_colors': ['#D4AF37', '#345995', '#56A64B', '#A6564B', '#8899AA', '#F0C75A'],
-                'line_color': '#345995',  # Secondary blue
+                'bar_colors': ['#D4AF37', '#5991C4', '#6EC1A7', '#D46A5F'],  # Gold, Blue, Green, Red
+                'pie_colors': ['#D4AF37', '#5991C4', '#6EC1A7', '#D46A5F', '#8899AA', '#F0C75A'],
+                'line_color': '#5991C4',  # Blue
                 'line_width': 2.5,
                 'marker_size': 8,
                 'marker_color': '#D4AF37',  # Gold markers
@@ -70,6 +70,66 @@ class MplCanvas(FigureCanvas):
         
         # Update the display
         self.draw()
+    
+    def apply_style_to_axes(self, ax, style_name='default'):
+        """
+        Apply the dark theme style to the specified axes object.
+        Useful when creating new subplots manually.
+        
+        Args:
+            ax (matplotlib.axes.Axes): The axes object to style
+            style_name (str, optional): The style preset to use. Defaults to 'default'.
+        """
+        if style_name not in self.style_presets:
+            return
+            
+        style = self.style_presets[style_name]
+        
+        # Set axes colors
+        ax.set_facecolor(style['bg_color'])
+        
+        # Set text colors
+        ax.title.set_color(style['title_color'])
+        ax.xaxis.label.set_color(style['text_color'])
+        ax.yaxis.label.set_color(style['text_color'])
+        
+        # Set tick colors
+        ax.tick_params(colors=style['tick_color'])
+        
+        # Set grid
+        ax.grid(True, color=style['grid_color'], linestyle='--', alpha=0.3)
+        
+        # Set spine colors
+        for spine in ax.spines.values():
+            spine.set_color(style['grid_color'])
+            
+        # Set title font size
+        ax.title.set_fontsize(style['title_size'])
+        
+        # Update the display
+        self.draw()
+        
+        return ax
+    
+    def get_tableau_colors(self):
+        """
+        Get the Tableau-like color palette used in the application.
+        
+        Returns:
+            list: List of hex color codes for charts
+        """
+        return [
+            '#D4AF37',  # Gold
+            '#5991C4',  # Blue
+            '#6EC1A7',  # Green
+            '#D46A5F',  # Red
+            '#A073D1',  # Purple
+            '#F49E5D',  # Orange
+            '#9DC375',  # Light Green
+            '#C4908F',  # Rose
+            '#8595A8',  # Gray Blue
+            '#D9A471',  # Tan
+        ]
     
     def save_figure(self, filepath, dpi=300):
         """

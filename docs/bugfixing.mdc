@@ -22,6 +22,111 @@ alwaysApply: false
 
 ## Fixed Issues
 
+### 2024-03-12: Missing Chart Generation in Reports
+
+**Issue:** 
+Reports were being generated without any charts, showing only placeholder text like "[Player Performance Chart would be displayed here]" instead of actual chart images.
+
+**Root Cause:**
+The `generate_chart_for_report` method was missing from the MainWindow class. This method is responsible for creating chart images that are included in the HTML reports. Without this method, the report generation code could only include placeholder text for charts.
+
+**Solution:**
+1. Implemented the missing `generate_chart_for_report` method in the MainWindow class:
+   ```python
+   def generate_chart_for_report(self, chart_type, category_field, title):
+       """Generate a chart image for the report."""
+       # Create a temporary file for the chart
+       temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+       # Generate the appropriate chart based on type and category
+       # Save the chart to the temporary file
+       return temp_file.name
+   ```
+2. Updated all report HTML generation methods to use this method instead of placeholders:
+   - Modified `create_full_report_html` to generate actual charts for Player, Chest, Source, and Date sections
+   - Modified `create_player_performance_html` to generate bar charts, bubble charts, and stacked bar charts
+   - Modified `create_chest_analysis_html` to generate bar and pie charts for chest value distribution
+   - Modified `create_source_analysis_html` to generate bar and pie charts for source value distribution
+3. Enhanced the chart generation to include proper styling and formatting consistent with the application theme
+
+**Verification:**
+Reports now include actual chart images instead of placeholder text. The charts are properly styled with the application's dark theme and gold accents, and they accurately represent the data being analyzed.
+
+### 2024-03-12: ImportArea Button Connection Error
+
+**Issue:** 
+The application was failing to start with the following error:
+```
+Error starting application: 'ImportArea' object has no attribute 'import_button'
+Traceback (most recent call last):
+  File "d:\Projekte\ChestParser\src\main.py", line 85, in main
+    main_window = MainWindow("Total Battle Analyzer")
+  File "d:\Projekte\ChestParser\src\modules\mainwindow.py", line 111, in __init__
+    self.connect_signals()
+  File "d:\Projekte\ChestParser\src\modules\mainwindow.py", line 2839, in connect_signals
+    self.import_area.select_button.clicked.connect(self.import_area.open_file_dialog)
+AttributeError: 'ImportArea' object has no attribute 'import_button'
+```
+
+**Root Cause:**
+Two issues were identified:
+1. The MainWindow was trying to connect to `import_button`, but the ImportArea class named it `select_button`.
+2. The ImportArea was being initialized with incorrect parameters in the MainWindow's setup_import_tab method.
+3. The signal connections were not properly set up to use the fileSelected signal.
+
+**Solution:**
+1. Updated the connect_signals method to use the correct button name:
+   ```python
+   self.import_area.select_button.clicked.connect(self.import_area.open_file_dialog)
+   ```
+2. Fixed the ImportArea initialization in setup_import_tab:
+   ```python
+   self.import_area = ImportArea(self.import_tab, debug=self.debug)
+   ```
+3. Connected the fileSelected signal from ImportArea to load_csv_file:
+   ```python
+   self.import_area.fileSelected.connect(self.load_csv_file)
+   ```
+
+**Verification:**
+The application now starts correctly without the AttributeError, and the import functionality works as expected.
+
+### 2024-03-12: Analysis Tab Button Name Mismatch
+
+**Issue:** 
+After fixing the ImportArea button issue, the application showed a new error:
+```
+Error starting application: 'MainWindow' object has no attribute 'analysis_select_all_button'
+Traceback (most recent call last):
+  File "D:\Projekte\ChestParser\src\main.py", line 85, in main
+    main_window = MainWindow("Total Battle Analyzer")
+  File "D:\Projekte\ChestParser\src\modules\mainwindow.py", line 111, in __init__
+    self.connect_signals()
+  File "D:\Projekte\ChestParser\src\modules\mainwindow.py", line 2865, in connect_signals
+    self.analysis_select_all_button.clicked.connect(self.select_all_analysis_values)
+AttributeError: 'MainWindow' object has no attribute 'analysis_select_all_button'
+```
+
+**Root Cause:**
+In the setup_analysis_tab method, the Select All and Deselect All buttons were named:
+- `self.select_all_analysis_button`
+- `self.deselect_all_analysis_button`
+
+But in the connect_signals method, they were being referenced as:
+- `self.analysis_select_all_button`
+- `self.analysis_deselect_all_button`
+
+This naming inconsistency caused the AttributeError.
+
+**Solution:**
+Updated the connect_signals method to use the correct button names:
+```python
+self.select_all_analysis_button.clicked.connect(self.select_all_analysis_values)
+self.deselect_all_analysis_button.clicked.connect(self.deselect_all_analysis_values)
+```
+
+**Verification:**
+The application now starts without errors and the analysis tab filter buttons work correctly.
+
 ### 2024-03-12: Matplotlib and PySide6 Compatibility
 
 **Issue:** 
@@ -2585,3 +2690,45 @@ Windows-1252 (cp1252) encoding is widely used in Windows systems for European la
   3. Applied the same fixes to the `save_chart` method for data export
   4. Added more detailed debug logging to help diagnose similar issues
 - **Verification:** The CHEST_COUNT measure now works properly for all dimensions in both visualization and data export.
+
+## Bug Fixes
+
+### 2024-03-12: Fixed Chart Styling in Charts Tab
+
+**Issue**: Charts in the Charts tab were not being styled correctly with the application's color scheme.
+
+**Root Cause**: The `update_chart` method was not properly applying the style from the `MplCanvas` class. The styling was inconsistent between different chart types.
+
+**Solution**:
+1. Enhanced the `MplCanvas` class with a new `apply_style_to_axes` method to allow styling specific axes objects.
+2. Added a `get_tableau_colors` method to provide a consistent color palette for charts.
+3. Updated the `update_chart` method to use these new helper methods.
+4. Improved pie chart handling to limit slices to top 9 + "Others" for better readability.
+5. Ensured consistent text colors across all chart elements.
+
+**Result**: Charts now display with consistent styling that matches the application theme.
+
+### 2024-03-12: Fixed Double File Dialog Issue
+
+**Issue**: When selecting a file, two file dialogs would appear in sequence, causing confusion for users.
+
+**Root Cause**: Both the `open_csv_file` method and the `ImportArea.open_file_dialog` method were being triggered when the user clicked on the Import CSV menu item.
+
+**Solution**:
+1. Modified the `connect_signals` method to properly connect the menu action to the `ImportArea.open_file_dialog` method directly.
+2. Updated the `open_csv_file` method to redirect to `ImportArea.open_file_dialog` for backward compatibility.
+3. Added proper error handling for signal connections to prevent crashes when UI components aren't fully initialized.
+
+**Result**: Only one file dialog appears when selecting a file, providing a smoother user experience.
+
+### 2024-03-12: Fixed Player Performance Report Error
+
+**Issue**: The Player Performance report was failing with a KeyError for 'TOTAL_SCORE'.
+
+**Root Cause**: The `create_player_performance_html` method was trying to access a 'TOTAL_SCORE' column in the player_totals DataFrame, but this column is actually named 'SCORE'.
+
+**Solution**:
+1. Updated the `create_player_performance_html` method to use 'SCORE' instead of 'TOTAL_SCORE' when working with the player_totals DataFrame.
+2. Added proper docstring with parameter descriptions.
+
+**Result**: Player Performance reports now generate correctly without errors.

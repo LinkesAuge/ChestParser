@@ -158,3 +158,52 @@ We need to consistently use the pathlib module throughout the codebase instead o
 - Replace os.path.dirname(path) with Path(path).parent
 - Replace os.getcwd() with Path.cwd()
 - Replace os.path.expanduser("~") with Path.home() 
+
+# Report Tab Implementation
+
+## Requirements
+Implement a Report tab that was previously available before refactoring. The Report tab should provide comprehensive report generation capabilities with multiple report types and export options.
+
+## Todo List
+
+### 1. User Interface Implementation
+- [x] Add a Report tab to the tab widget
+- [x] Create report controls with report type selector
+- [x] Add inclusion options (Charts, Tables, Statistics)
+- [x] Create report generation and export buttons
+- [x] Add QTextBrowser for displaying the generated report
+
+### 2. Report Generation Functionality
+- [x] Implement `setup_report_tab()` method to create the tab UI
+- [x] Create `generate_report()` method to generate reports based on selection
+- [x] Implement report generation logic for different report types:
+  - [x] Full Report
+  - [x] Player Performance
+  - [x] Chest Type Analysis
+  - [x] Source Analysis
+- [x] Add HTML generation methods for each report type
+- [x] Ensure proper styling using the Total Battle theme
+
+### 3. Report Export Functionality
+- [x] Implement `export_report()` method
+- [x] Support exporting to HTML and PDF formats
+- [x] Add file dialog for choosing export location
+- [x] Ensure proper file handling with pathlib
+- [x] Implement error handling for export operations
+
+### 4. Integration with Existing Code
+- [x] Update `enable_all_tabs()` and `disable_tabs_except_import()` to include the Report tab
+- [x] Connect report controls to appropriate functions
+- [x] Update `connect_signals()` method to include report button connections
+- [x] Ensure tab visibility is properly managed
+
+### 5. Testing and Validation
+- [x] Test report generation with different report types
+- [x] Test report export to HTML and PDF
+- [x] Verify proper error handling when no data is available
+- [x] Ensure reports reflect current data analysis
+- [x] Fix MplCanvas initialization error where chart_container was incorrectly passed as first parameter
+
+### 6. Documentation
+- [x] Update app_report.mdc with Report tab functionality
+- [x] Update memory.mdc with implementation details 

@@ -113,6 +113,19 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
 - **Customizable content**: Options to include/exclude charts, tables, and statistics
 - **Export options**: Save reports as HTML or PDF documents
 - **Styled reports**: Professional dark theme with gold accents matching the application
+- **Report sections**:
+  - Overview: General statistics and information about the dataset
+  - Player Analysis: Player performance, rankings, and efficiency metrics
+  - Chest Analysis: Chest types, values, and distribution
+  - Source Analysis: Sources of chests, their values, and distribution
+  - Date Analysis: Trends over time with date-based statistics
+- **Statistical calculations**:
+  - Player efficiency metrics (points per chest)
+  - Top performers and rankings
+  - Value distribution analysis
+  - Trend identification
+- **Interactive viewing**: HTML reports with proper formatting and styled sections
+- **Professional export**: PDF generation with consistent styling and formatting
 
 ### User Experience
 - **ImportArea**: Custom widget for file selection
@@ -153,6 +166,42 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
 - Python standard libraries: pathlib, datetime, csv, etc.
 
 ## Recent Changes
+- **2024-03-12: Fixed Chart Styling and File Dialog Issues**
+  - Fixed chart styling in the Charts tab by enhancing the MplCanvas class with new helper methods:
+    - Added apply_style_to_axes method to allow styling specific axes objects
+    - Added get_tableau_colors method to provide a consistent color palette for charts
+    - Updated the update_chart method to use these new helper methods
+    - Improved pie chart handling to limit slices to top 9 + "Others" for better readability
+  - Fixed the double file dialog issue by:
+    - Modifying the connect_signals method to properly connect the menu action to the ImportArea.open_file_dialog method directly
+    - Updating the open_csv_file method to redirect to ImportArea.open_file_dialog for backward compatibility
+    - Adding proper error handling for signal connections to prevent crashes when UI components aren't fully initialized
+  - Fixed Player Performance report error by updating the create_player_performance_html method to use 'SCORE' instead of 'TOTAL_SCORE'
+
+- **2024-03-12: Fixed Missing Chart Generation in Reports**
+  - Implemented the missing generate_chart_for_report method to create chart images for reports
+  - Updated all report HTML generation methods to use actual charts instead of placeholder text
+  - Added support for multiple chart types: Bar Chart, Pie Chart, Stacked Bar Chart, and Bubble Chart
+  - Implemented chart generation for all data categories: PLAYER, CHEST, SOURCE, and DATE
+  - Enhanced chart styling and formatting to be consistent with the application theme
+  - Ensured charts are saved as temporary image files and included in HTML reports
+  - Improved the visual quality of reports with professional-looking charts
+
+- **2024-03-12: Fixed ImportArea Button Connection Error**
+  - Fixed application startup error related to ImportArea button connection
+  - Updated connect_signals method to use the correct button name: self.import_area.select_button
+  - Fixed ImportArea initialization with correct parameters
+  - Connected ImportArea.fileSelected signal to MainWindow.load_csv_file for proper signal flow
+  - Application now starts correctly without AttributeError and import functionality works properly
+
+- **2024-03-12: Fixed Analysis Tab Button Name Mismatch**
+  - Fixed application startup failure caused by AttributeError: 'MainWindow' object has no attribute 'analysis_select_all_button'
+  - Identified naming inconsistency between button creation in setup_analysis_tab and signal connection in connect_signals
+  - Updated connect_signals method to use the correct button names matching those defined in setup_analysis_tab
+  - Ensured consistent naming convention across setup method and signal connections
+  - Improved application stability and error handling
+  - Enabled proper functionality of Analysis tab filter buttons
+
 - **2024-07-15: Fixed Raw Data Tab Export Bug**
   - Fixed issue where the Export to CSV button in the Raw Data tab wasn't working
   - Implemented proper proxy model for the Raw Data tab to match the Analysis tab

@@ -157,8 +157,8 @@ class DataProcessor:
         Returns:
             tuple: (pandas.DataFrame, bool, str) - DataFrame with fixed text encoding, success flag, error message
         """
-        # Set debug to True for troubleshooting
-        DataProcessor.debug = True
+        # Store the current debug setting instead of forcing it to True
+        current_debug = DataProcessor.debug
         
         # Convert to Path object if it's a string
         filepath = Path(filepath)
