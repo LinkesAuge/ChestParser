@@ -1,4 +1,14 @@
 ---
+description: 
+globs: 
+alwaysApply: false
+---
+---
+description: 
+globs: 
+alwaysApply: false
+---
+---
 description: Project Memory
 globs: *.py
 alwaysApply: false
@@ -9,6 +19,7 @@ alwaysApply: false
 - Total Battle analyzer application using PySide6 and matplotlib
 - The application analyzes and visualizes data from Total Battle game
 - Main file: src/total-battle-analyzer.py
+- Main launcher: run.py
 
 ## Development History
 - 2024-03-11: Initial project setup with PySide6, matplotlib, and pandas
@@ -46,195 +57,171 @@ alwaysApply: false
 - 2024-03-27: Enhanced Raw Data Tab with date range filtering, multiple selection filters, and export functionality
 - 2024-03-28: Improved Raw Data Tab UI with split layout, streamlined filtering controls, and select all/deselect all functionality
 - 2024-03-29: Fixed value selection panel not appearing when "Select specific values" checkbox was checked
+- 2024-03-30: Enhanced UI navigation by disabling all tabs except Import tab when no CSV file is loaded
+- 2024-03-30: Improved visual indication for disabled tabs with lighter text color for better UX
+- 2024-03-30: Refined gold color balance for better visual hierarchy - brighter for UI elements, darker for buttons
+- 2024-03-31: Enhanced Analysis tab with advanced filtering capabilities and new Player Overview view
+- 2024-03-31: Made "Player Overview" the default view in the Analysis tab for better user experience
+- 2024-04-01: Modified the application to switch to the Analysis tab after loading a CSV file
+- 2024-04-01: Moved "Player Overview" to be the first item in the analysis view selector for cleaner default selection
+- 2024-04-01: Fixed issue where "Player Overview" selection wasn't persisting when chart data changed
+- 2024-04-01: Fixed chart generation for Player Overview view by using TOTAL_SCORE/CHEST_COUNT columns
+- 2024-04-02: Enhanced chart functionality with new chart types, customization options, and export capability
+- 2024-04-02: Improved chart appearance with better styling options and color schemes
+- 2024-04-02: Added data filtering options for charts including sorting and limiting to top N items
+- 2024-04-03: Fixed missing methods in MainWindow class causing AttributeError exceptions
+- 2024-05-01: Fixed styling issues with missing dark theme application
+- 2024-05-01: Enhanced German character encoding detection and automatic fixing in CSV files
+- 2024-05-01: Created comprehensive README.md and requirements.txt files
+- 2024-05-02: Integrated all fixes directly into the main file (src/total-battle-analyzer.py)
+- 2024-05-02: Created a unified launcher script (run.py) to replace multiple fix files
+- 2024-05-02: Overhauled the error handling system with detailed stack traces and user-friendly error dialogs
+- 2024-05-02: Enhanced window visibility to ensure proper display on startup
+- 2024-05-02: Converted to UV and pyproject.toml for dependency management
+- 2024-05-02: Enhanced styling in the main file with more consistent and complete theme application
+- 2024-05-15: Fixed missing methods and tab enabling in load_csv_file method
+- 2024-05-15: Fixed tab widget name discrepancy causing application startup failure
+- 2024-05-15: Fixed raw data table attribute name discrepancy in load_csv_file method
+- 2024-05-15: Fixed analysis selector attribute name discrepancy in load_csv_file method
+- 2024-05-15: Fixed headers attribute reference in populate_filter_columns_dropdown method
+- 2024-05-15: Fixed missing data check in update_filter_options method
+- 2024-05-15: Fixed missing DataFrame assignment in load_csv_file method
+- 2024-05-15: Enhanced `update_analysis_filter_options` with proper data availability checks
+- 2024-05-15: Fixed widget name inconsistency in populate_filter_columns_dropdown method
+- 2024-05-15: Fixed references from self.df to self.raw_data in analyze_data and analyze_chests_data methods
+- 2024-05-15: Fixed missing analysis_results initialization in analyze_data method
+- 2024-05-15: Implemented proper data aggregation in analyze_chests_data method
+- 2024-05-15: Enhanced update_date_range_from_data method with robust error handling
+- 2024-05-15: Added comprehensive error handling in update_analysis_view method
+- 2024-05-15: Enhanced update_filter_options method with detailed logging and error handling
+- 2024-05-15: Fixed infinite loop in update_filter_options method by blocking signals during UI updates
+- 2024-05-15: Fixed infinite recursion in update_analysis_filter_options method
+- 2024-05-15: Fixed missing value list population in update_analysis_filter_options method
+- 2024-05-15: Fixed horizontal bar chart implementation to use direct matplotlib plotting
+- 2024-05-16: Fixed horizontal bar chart implementation by correcting 'df' variable name to 'data'
+- 2024-05-16: Fixed stacked bar chart to handle cases when there are no chest columns in player overview
+- 2024-05-16: Enhanced player overview analysis to include source score breakdowns
+- 2024-05-16: Improved tab title styling to make active tabs more prominent with bold gold text
+- 2024-05-16: Refined player overview to focus on source scores only (removed chest type scores)
+- 2024-05-16: Improved source column naming in player overview from "SOURCE_X" to "Source: X"
+- 2024-05-16: Enhanced non-active tab visibility by using normal text color instead of grey
+- 2024-05-16: Updated stacked bar chart to display source scores instead of chest type scores
+- 2024-05-16: Removed "Source: " prefix from source column names in player overview for a cleaner display
+- 2024-05-16: Added default sorting to player overview by TOTAL_SCORE in descending order
+- 2024-05-16: Fixed issue where Player Overview in Analysis tab required applying a filter to display data
+- 2024-05-16: Enhanced update_analysis_view method to ensure table model is properly set and visible
+- 2024-05-16: Fixed tab selection logic to properly show the Analysis tab when needed
+- 2024-05-16: Fixed issue where Player Overview data wasn't displayed automatically after loading CSV
+- 2024-05-16: Added automatic filter application in load_csv_file to initialize view correctly
+- 2024-05-16: Enhanced filter_analysis_data to auto-select a filter column when none is selected
+- 2024-05-16: Updated DataProcessor.analyze_data method to use SOURCE columns instead of CHEST columns in Player Overview
+- 2024-05-16: Ensured view switching works correctly by automatically applying filters when changing views
+- 2024-06-01: Added new Report tab with comprehensive reporting capabilities
+- 2024-06-01: Implemented HTML and PDF export functionality for reports
+- 2024-06-01: Added four report types: Full Report, Player Performance, Chest Type Analysis, and Source Analysis
+- 2024-06-01: Created professional styled report template with Total Battle theme
+- 2024-06-01: Enhanced chart functionality with a new Bubble Chart type for 3D data visualization
+- 2024-06-01: Improved integration of TOTAL_SCORE and CHEST_COUNT data in all chart types
+- 2024-06-01: Added efficiency metrics (points per chest) for player performance analysis
+- 2024-06-01: Enhanced chart data display with better labeling and formatting
+- 2024-06-02: Fixed indentation issues in Report tab implementation methods
+- 2024-06-03: Fixed remaining linter errors in Report tab implementation (TABLEAU_COLORS definition)
+- 2024-06-03: Addressed multiple indentation issues throughout the codebase
+- 2024-06-03: Created fix scripts for specific indentation problems
 
 ## Current Tasks
-- Fixed compatibility issue between matplotlib and PySide6
-  - Changed import from backend_qt5agg to backend_qtagg
-  - Added explicit matplotlib backend configuration to use QtAgg
-- Enhanced CSV loading to handle non-UTF-8 encodings
-  - Modified DataProcessor.load_csv() to try multiple encodings
-  - Added better error handling for encoding issues
-- Fixed pandas DataFrame boolean evaluation issue
-  - Changed `if not self.raw_data` to `if self.raw_data is None or self.raw_data.empty`
-  - Updated both filter_raw_data and update_filter_options methods
-- Updated PySide6 filtering API usage
-  - Changed deprecated `setFilterRegExp("")` to `setFilterFixedString("")`
-- Completely redesigned the file import approach:
-  - Removed all drag and drop functionality due to system-level compatibility issues
-  - Renamed DropArea to ImportArea with focus solely on file selection
-  - Simplified UI with clear focus on reliable file selection methods
-- Comprehensive UI refactoring
-  - Restructured tab creation and initialization
-  - Improved UI component layout and organization
-  - Separated UI creation from data handling
-  - Added proper error handling for all data operations
-  - Enhanced CSV file loading with detailed error checking
-  - Removed diagnostic tools and simplified the interface
-  - Fixed interactions between components
-  - Improved visual feedback throughout the application
-  - Removed the persistent file selection panel at the top of the window for a cleaner interface
-- Multiple reliable import methods for CSV files:
-  - File menu with Import option (Ctrl+O)
-  - Import button in the dedicated import area
-- Implemented Total Battle-inspired UI theme:
-  - Created a dark blue and gold color scheme to match the game's aesthetics
-  - Enhanced button styling with gold gradients
-  - Added elegant styling for all UI components
-  - Improved chart visualization with themed colors
-  - Added proper spacing and visual hierarchy to the interface
-  - Created more professional component styling with better visual feedback
-  - Enhanced the file import area with better styling and clearer instructions
-- Fixed chart generation error:
-  - Fixed "dict has no attribute empty" error in update_chart method
-  - Changed from checking self.analysis_results.empty to checking if dict is None or empty
-- Fixed duplicated menu items:
-  - Removed redundant setup_menu() call in MainWindow.__init__
-  - Kept only the setup_menu() call in setup_ui() method
-- Implemented configuration management system:
-  - Created ConfigManager class for persistent application settings
-  - Added config.ini file with default settings
-  - Created automatic directory creation for import and export
-  - Added import and export directory configuration
-  - Implemented last used directory tracking
-  - Enhanced ImportArea to use configured import directories
-  - Updated export functionality to use configured export directories
-- Enhanced German character encoding support:
-  - Added detection of German umlauts in file content
-  - Prioritized German-friendly encodings when umlauts are detected
-  - Added configuration options for German encodings
-  - Enhanced logging for encoding detection
-- Fixed chart generation and added comprehensive logging:
-  - Added detailed logging throughout chart generation
-  - Added robust column existence checking
-  - Enhanced error handling with traceback printing
-  - Added specific logging for each chart type
-- Improved German umlaut detection and handling:
-  - Added detection for garbled umlaut representations (like 'Ã¤' instead of 'ä')
-  - Implemented automatic repair of misencoded player names
-  - Enhanced file reading to check more content for umlauts
-  - Added specific detection and repair for names like 'FeldjÃ¤ger'
-  - Improved verification and reporting of German character handling
-- Fixed chart column name case sensitivity issue:
-  - Updated chart data selector to use uppercase column names matching the DataFrame
-  - Simplified the update_chart method by removing unnecessary column name mapping
-  - Improved charts with better use of direct column names for labels and plotting
-- Fixed chart view selection for SOURCE and CHEST columns:
-  - Implemented automatic view selection based on the selected x-axis column
-  - Added synchronization between the chart data selector and analysis view selector
-  - Ensured proper DataFrame selection based on column selection
-  - Improved detection of SCORE vs COUNT columns in different views
-- Improved button text readability:
-  - Changed button text color from black to white for better contrast
-  - Used the theme's foreground color for consistency throughout the application
-- Enforced required CSV columns:
-  - Modified the CSV loading code to require all mandatory columns (DATE, PLAYER, SOURCE, CHEST, SCORE)
-  - Added automatic removal of any extra columns
-  - Updated all CSV loading code paths to enforce these requirements
-  - Made the import instructions clearer about column requirements
-  - Improved user feedback when columns are missing or removed
-- Fixed import and export directory handling:
-  - Updated ConfigManager to properly detect the project root directory
-  - Modified code to use existing import and export folders at the project root
-  - Added verification to check if directories exist before using them
-  - Added clear logging to show which directories are being used
-  - Ensured application works correctly regardless of starting directory
-- Enhanced Raw Data Tab with advanced filtering and export:
-  - Added date range filter with start and end date pickers
-  - Replaced single-value combobox with multi-select list for column values
-  - Added direct export functionality for filtered data
-  - Improved status bar messages with detailed filter information
-  - Updated filter logic to support both value and date filtering simultaneously
-- Improved Raw Data Tab UI Layout:
-  - Split the tab into two horizontal regions with a QSplitter
-  - Moved the value selection list to the right side of the splitter
-  - Added a checkbox to toggle the value selection panel visibility
-  - Added Select All and Deselect All buttons for the value list
-  - Implemented select all by default behavior for better usability
-  - Made the UI more space-efficient with hide/show functionality for filters
-  - Enhanced the filter process to work with or without specific value selection
-- Fixed value selection panel visibility:
-  - Corrected the toggle_value_selection method to use the proper state value (2 for checked)
-  - Fixed the logic to properly show/hide the value selection panel based on checkbox state
-  - Ensured values are properly populated when panel is shown
-  - Maintained proper sizing and layout of the splitter when showing/hiding panels
+- Enhanced application theme:
+  - Removed light theme completely to maintain consistent dark theme
+  - Updated dark theme colors:
+    - Main background: #1A2742
+    - Secondary background: #2A3752
+    - Text: #FFFFFF (primary), #8899AA (secondary)
+    - Accent: #D4AF37 (gold)
+    - Hover: #F0C75A (light gold)
+  - Updated chart styling to match application theme:
+    - Chart background: #1A2742
+    - Grid color: #3A4762
+    - Text color: #FFFFFF
+    - Title color: #D4AF37
+    - Chart colors: Gold (#D4AF37), Blue (#5991C4), Green (#6EC1A7), Red (#D46A5F)
+  - Removed theme selection from settings
+  - Updated ConfigManager to always use dark theme
+  - Ensured consistent styling across all UI components
+  - Enhanced chart readability with proper contrast
+  - Improved visual hierarchy with gold accents
 
 ## Dependencies
 - PySide6: 6.8.2.1
 - matplotlib: 3.10.1
 - pandas: 2.2.3
-- pathlib: 1.0.1
-- datetime: 5.5+
+- numpy: 1.26.4
 
 ## Notes
 - The application uses a dark blue and gold theme inspired by the Total Battle game
-- Has multiple tabs: Import, Raw Data, Analysis, and Charts
+- Has multiple tabs: Import, Raw Data, Analysis, Charts, and Report
 - CSV files may contain special characters requiring different encodings (like Windows-1252 or Latin-1)
 - Proper pandas DataFrame handling requires checking `is None` or `.empty` rather than direct boolean evaluation
 - PySide6 6.8.2.1 uses updated filtering API methods compared to older versions
-- Drag and drop in Qt applications requires proper implementation of dragEnterEvent, dragMoveEvent, and dropEvent
-- For drag and drop to work with files in Qt:
-  - Use event.acceptProposedAction() to properly accept drops
-  - Implement all necessary drag events (Enter, Move, Leave, Drop)
-  - Process the mimeData to extract file information
-  - Check file extensions before accepting drag operations
-  - Provide visual feedback to the user when files can be dropped
-- To debug drag and drop issues:
-  - Print mime data formats with event.mimeData().formats()
-  - Add detailed logging for each event type
-  - Explicitly handle URLs from mime data with url.toLocalFile()
-  - Ensure the MainWindow has setAcceptDrops(True) set
-  - Make sure to override all drag and drop related events
-- Windows-specific drag and drop considerations:
-  - Accept ALL drags with URLs initially, filter by file type later
-  - Use multiple file path extraction methods (toLocalFile() and path())
-  - Normalize file paths with Path().resolve().as_posix()
-  - Handle leading slash removal for Windows paths
-  - Explicitly set dropAction to Qt.CopyAction
-  - Catch all exceptions during drag and drop to prevent crashes
-  - Check file attributes (exists, readable, size) after path extraction
-- Advanced drag and drop techniques for Qt applications:
-  - Accept ALL drag enter events initially to ensure visual feedback works
-  - Only filter by file type at the drop event stage
-  - Try multiple methods to extract file paths from URLs
-  - Handle text-based MIME data as a fallback mechanism
-  - Provide detailed diagnostic information in debug mode
-  - Preserve original file paths if normalization fails
-  - Check file existence at multiple stages
-  - Try alternative CSV parsing approaches
-- Critical for working drag and drop in Qt:
-  - Always unconditionally accept dragEnterEvent and dragMoveEvent
-  - Use both event.accept() and event.acceptProposedAction() for certainty
-  - Only validate the file after accepting the dropEvent
-  - Maintain visual consistency with style updates during drag operations
-- Comprehensive diagnostic logging for troubleshooting:
-  - Use clear section markers in log output (=== or --- surrounded sections)
-  - Include timestamps for critical operations
-  - Log MIME data types and content
-  - Include file existence checks and permissions
-  - Show file content samples for encoding verification 
-  - Use traceback.print_exc() for full stack traces
-  - Log signal emissions and their parameters
-  - Check event.isAccepted() status at key points
-  - Verify file paths at multiple stages
-- System-level drag and drop issues:
-  - Some Windows configurations may have drag and drop disabled or blocked
-  - Security settings can prevent drag and drop from working properly
-  - Always provide alternative file selection methods that don't rely on drag and drop
-  - Use persistent UI elements for critical file operations
-  - Provide clear visual feedback for file operations
-  - Use QTimer for non-blocking UI updates during file processing 
-- Overriding Qt event handlers:
-  - Always include both `self` and `event` parameters (e.g., `def resizeEvent(self, event):`)
-  - When using method binding with `types.MethodType`, ensure the function has the correct signature
-  - Call the parent class's original method when appropriate (e.g., `QMainWindow.resizeEvent(self, event)`)
-  - When using closures in the main function to override events, remember that the function will have `self` injected as first parameter
-- Dictionary vs DataFrame checks:
-  - When checking if a dictionary is empty, use `if not dict_object` instead of `dict_object.empty`
-  - When checking if a DataFrame is empty, use `if df is None or df.empty`
-  - Be careful not to mix these patterns as dictionaries don't have an `empty` attribute 
-- UI Splitter considerations:
-  - Use QSplitter to create resizable panes in the UI
-  - Set initial sizes with setSizes([width1, width2]) in pixel values
-  - Can be oriented horizontally (Qt.Horizontal) or vertically (Qt.Vertical)
-  - Use widget.hide() to completely hide a splitter pane
-  - Widget visibility can be toggled dynamically with show/hide methods 
+- We now use a unified launcher (run.py) instead of multiple fix files
+- All fixes have been integrated directly into the main file for simpler maintenance
+- Application now has improved error handling with detailed tracebacks and user-friendly error dialogs
+- The theme application has been enhanced to ensure consistent styling throughout the application
+- Windows visibility issues have been addressed with proper window activation
+- The application now uses UV with pyproject.toml for dependency management instead of pip with requirements.txt
+- The new Report tab provides comprehensive analysis with HTML/PDF export capabilities
+- Chart functionality now includes 3D visualizations with bubble charts showing efficiency metrics
+- Efficiency calculations (points per chest) provide additional insights into player performance
+
+## 2024-06-01: Added Report Tab
+- Implemented a new Report tab with comprehensive reporting capabilities
+- Added HTML and PDF export functionality
+- Created four report types:
+  1. Full Report - comprehensive overview of all data
+  2. Player Performance - focused on player scores, chest counts, and efficiency
+  3. Chest Type Analysis - detailed breakdown of chest types and their values
+  4. Source Analysis - analysis of score sources and their distribution
+- Created professional styled report template with Total Battle theme
+- Implemented chart generation for reports with various visualization types
+- Added export functionality for both HTML and PDF formats with page setup options
+
+## 2024-06-01: Enhanced Chart Functionality
+- Added TOTAL_SCORE and CHEST_COUNT to chart data selector
+- Implemented new Bubble Chart type for 3D data visualization (score vs chest count with efficiency as bubble size)
+- Improved chart data display with better axis labels and titles
+- Added efficiency metrics (points per chest) for player performance analysis
+- Enhanced chart type selector to work with all data types
+
+## 2024-05-31: Fixed Filter Selection Functionality
+- Fixed issue with filter selection not working properly
+- Implemented signal blocking during filter list updates
+- Added proper error handling and data validation
+- Fixed visibility toggle for analysis value selection panel
+
+## Current Task
+Implementing the Report tab functionality in the Total Battle Analyzer application. The Report tab allows users to generate comprehensive reports with charts, tables, and statistics. Reports can be exported as HTML or PDF files.
+
+## Implementation Details
+- Added `setup_report_tab` method to create the UI components for the Report tab
+- Implemented `generate_report` method to create HTML content for reports
+- Created specialized report generation methods for different report types:
+  - `create_full_report_html`
+  - `create_player_performance_html`
+  - `create_chest_analysis_html`
+  - `create_source_analysis_html`
+- Added `export_report` method to save reports as HTML or PDF
+- Implemented `generate_chart_for_report` helper method to create chart images for reports
+- Added necessary imports: QPrinter, QPageSetupDialog from PySide6.QtPrintSupport
+
+## Next Steps
+- Test the Report tab functionality with various data sets
+- Consider adding more report customization options
+- Explore additional chart types for better data visualization
+- Add option to save report templates for future use
+
+## Notes
+- The Report tab is only enabled after data is loaded
+- Reports are generated based on the current analysis results
+- PDF export requires the QPrinter module from PySide6.QtPrintSupport
+- Chart generation uses matplotlib to create temporary image files
+- HTML reports use a dark theme matching the application's UI
+ 

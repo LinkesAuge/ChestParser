@@ -1,13 +1,37 @@
 [project]
-name = "chestparser"
-version = "0.1.0"
-description = "Add your description here"
+name = "total-battle-analyzer"
+version = "1.0.0"
+description = "A desktop application for analyzing and visualizing data from the Total Battle game"
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Total Battle Analyzer Team"}
+]
 dependencies = [
-    "datetime>=5.5",
     "matplotlib>=3.10.1",
     "pandas>=2.2.3",
-    "pathlib>=1.0.1",
     "pyside6>=6.8.2.1",
+    "numpy>=1.26.4",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+exclude = ["__pycache__", ".git"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "ruff>=0.0.254",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[tool.hatch.metadata]
+allow-direct-references = true

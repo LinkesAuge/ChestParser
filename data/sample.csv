@@ -1,0 +1,10 @@
+DATE,PLAYER,SOURCE,CHEST,SCORE
+2024-03-12,Player1,Daily,Gold,100
+2024-03-12,Player2,Event,Diamond,250
+2024-03-12,Player3,Quest,Silver,75
+2024-03-11,Player1,Daily,Silver,50
+2024-03-11,Player2,Event,Gold,150
+2024-03-11,Player3,Quest,Diamond,200
+2024-03-10,Player1,Daily,Diamond,300
+2024-03-10,Player2,Event,Silver,80
+2024-03-10,Player3,Quest,Gold,125 
