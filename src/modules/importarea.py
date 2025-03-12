@@ -2,7 +2,8 @@
 from modules.utils import *
 from modules.stylemanager import DARK_THEME
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel, 
-                             QFileDialog, QGroupBox)
+                             QFileDialog, QGroupBox, QHBoxLayout, QFrame,
+                             QSplitter)
 from PySide6.QtCore import Signal, Qt
 from pathlib import Path
 
@@ -40,11 +41,90 @@ class ImportArea(QWidget):
         """Set up the UI components with proper styling and layout"""
         # Create main layout
         layout = QVBoxLayout()
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(20, 20, 20, 20)
+        layout.setSpacing(20)
+        
+        # Create a welcome header
+        welcome_layout = QVBoxLayout()
+        welcome_title = QLabel("Total Battle Analyzer")
+        welcome_title.setStyleSheet(f"""
+            color: {DARK_THEME['accent']};
+            font-size: 24px;
+            font-weight: bold;
+        """)
+        welcome_title.setAlignment(Qt.AlignCenter)
+        
+        welcome_subtitle = QLabel("Import your data to begin analysis")
+        welcome_subtitle.setStyleSheet(f"""
+            color: {DARK_THEME['text_secondary']};
+            font-size: 16px;
+        """)
+        welcome_subtitle.setAlignment(Qt.AlignCenter)
+        
+        welcome_layout.addWidget(welcome_title)
+        welcome_layout.addWidget(welcome_subtitle)
+        welcome_layout.addSpacing(10)
+        
+        layout.addLayout(welcome_layout)
+        
+        # Create horizontal splitter for layout
+        content_splitter = QSplitter(Qt.Horizontal)
+        
+        # File selection panel (left side)
+        file_panel = QWidget()
+        file_panel.setObjectName("fileInputSection")
+        file_layout = QVBoxLayout(file_panel)
+        file_layout.setContentsMargins(20, 20, 20, 20)
+        file_layout.setSpacing(15)
+        
+        # File selection icon/instructions
+        file_header = QLabel("Select CSV File")
+        file_header.setStyleSheet(f"""
+            color: {DARK_THEME['accent']};
+            font-size: 18px;
+            font-weight: bold;
+        """)
+        file_header.setAlignment(Qt.AlignCenter)
+        
+        file_instruction = QLabel("Click the button below to select your CSV data file")
+        file_instruction.setStyleSheet(f"color: {DARK_THEME['text_secondary']};")
+        file_instruction.setAlignment(Qt.AlignCenter)
+        file_instruction.setWordWrap(True)
+        
+        # Create file selection button with enhanced styling
+        self.select_button = QPushButton("Select CSV File")
+        self.select_button.setObjectName("selectFileButton")
+        self.select_button.setMinimumHeight(40)
+        self.select_button.clicked.connect(self.open_file_dialog)
+        
+        # Create file info label with styling
+        self.file_info = QLabel("No file selected")
+        self.file_info.setAlignment(Qt.AlignCenter)
+        self.file_info.setStyleSheet(f"""
+            color: {DARK_THEME['text']};
+            padding: 10px;
+            background: {DARK_THEME['background_light']};
+            border: 1px solid {DARK_THEME['border']};
+            border-radius: 5px;
+            font-size: 13px;
+        """)
+        
+        # Add widgets to file panel
+        file_layout.addWidget(file_header)
+        file_layout.addWidget(file_instruction)
+        file_layout.addSpacing(20)
+        file_layout.addWidget(self.select_button)
+        file_layout.addWidget(self.file_info)
+        file_layout.addStretch()
+        
+        # Instructions panel (right side)
+        instructions_panel = QWidget()
+        instructions_layout = QVBoxLayout(instructions_panel)
+        instructions_layout.setContentsMargins(10, 10, 10, 10)
+        instructions_layout.setSpacing(10)
         
         # Create instructions group box
-        instructions_group = QGroupBox("Import Instructions")
+        instructions_group = QGroupBox("File Requirements")
         instructions_group.setStyleSheet(f"""
             QGroupBox {{
                 border: 2px solid {DARK_THEME['accent']};
@@ -58,73 +138,63 @@ class ImportArea(QWidget):
                 left: 10px;
                 padding: 0 3px 0 3px;
                 color: {DARK_THEME['accent']};
+                font-weight: bold;
             }}
         """)
         
-        instructions_layout = QVBoxLayout()
+        instructions_box_layout = QVBoxLayout()
         instructions_text = QLabel(
-            "CSV files must contain these columns:\n"
-            "- DATE (format: YYYY-MM-DD)\n"
-            "- PLAYER (player name)\n"
-            "- SOURCE (chest source)\n"
-            "- CHEST (chest type)\n"
-            "- SCORE (numeric value)\n\n"
+            "CSV files must contain these columns:\n\n"
+            "• DATE (format: YYYY-MM-DD)\n"
+            "• PLAYER (player name)\n"
+            "• SOURCE (chest source)\n"
+            "• CHEST (chest type)\n"
+            "• SCORE (numeric value)\n\n"
             "Files missing any required columns will be rejected.\n"
-            "Additional columns will be removed."
+            "Additional columns like CLAN will be preserved."
         )
-        instructions_text.setStyleSheet(f"color: {DARK_THEME['text']};")
+        instructions_text.setStyleSheet(f"color: {DARK_THEME['text']}; line-height: 150%;")
         instructions_text.setWordWrap(True)
-        instructions_layout.addWidget(instructions_text)
-        instructions_group.setLayout(instructions_layout)
+        instructions_box_layout.addWidget(instructions_text)
+        instructions_group.setLayout(instructions_box_layout)
         
-        # Create file selection button with styling
-        self.select_button = QPushButton("Select CSV File")
-        self.select_button.setMinimumHeight(40)
-        self.select_button.setStyleSheet(f"""
-            QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 {DARK_THEME['button_gradient_start']},
-                    stop:1 {DARK_THEME['button_gradient_end']});
-                border: 1px solid {DARK_THEME['accent']};
-                border-radius: 5px;
-                color: {DARK_THEME['text']};
-                padding: 5px 15px;
-            }}
-            QPushButton:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 {DARK_THEME['button_hover_gradient_start']},
-                    stop:1 {DARK_THEME['button_hover_gradient_end']});
-            }}
-            QPushButton:pressed {{
-                background: {DARK_THEME['button_pressed']};
-            }}
+        # Note box
+        note_frame = QFrame()
+        note_frame.setStyleSheet(f"""
+            background-color: {DARK_THEME['background_light']};
+            border-radius: 5px;
+            padding: 5px;
         """)
-        self.select_button.clicked.connect(self.open_file_dialog)
+        note_layout = QVBoxLayout(note_frame)
         
-        # Create file info label with styling
-        self.file_info = QLabel("No file selected")
-        self.file_info.setAlignment(Qt.AlignCenter)
-        self.file_info.setStyleSheet(f"""
-            QLabel {{
-                color: {DARK_THEME['text']};
-                padding: 5px;
-                background: {DARK_THEME['background_secondary']};
-                border: 1px solid {DARK_THEME['accent']};
-                border-radius: 3px;
-            }}
-        """)
+        note_label = QLabel("Note:")
+        note_label.setStyleSheet(f"color: {DARK_THEME['accent']}; font-weight: bold;")
         
-        # Add widgets to layout
-        layout.addWidget(instructions_group)
-        layout.addWidget(self.select_button)
-        layout.addWidget(self.file_info)
+        note_text = QLabel(
+            "This application can auto-detect column names (case-insensitive) "
+            "and supports multiple encodings including UTF-8 and Windows formats. "
+            "German umlauts (ä, ö, ü) are properly supported."
+        )
+        note_text.setStyleSheet(f"color: {DARK_THEME['text_secondary']};")
+        note_text.setWordWrap(True)
         
-        # Set widget styling
-        self.setStyleSheet(f"""
-            QWidget {{
-                background: {DARK_THEME['background']};
-            }}
-        """)
+        note_layout.addWidget(note_label)
+        note_layout.addWidget(note_text)
+        
+        # Add widgets to instructions panel
+        instructions_layout.addWidget(instructions_group)
+        instructions_layout.addWidget(note_frame)
+        instructions_layout.addStretch()
+        
+        # Add panels to splitter
+        content_splitter.addWidget(file_panel)
+        content_splitter.addWidget(instructions_panel)
+        
+        # Set splitter sizes (40% file panel, 60% instructions)
+        content_splitter.setSizes([4, 6])
+        
+        # Add splitter to main layout
+        layout.addWidget(content_splitter)
         
         # Set layout
         self.setLayout(layout)
