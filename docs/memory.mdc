@@ -35,6 +35,17 @@ alwaysApply: false
 - 2024-03-12: Fixed drag and drop functionality for CSV files (red crossed circle issue)
 - 2024-03-12: Enhanced drag and drop with file extension filtering and visual feedback
 - 2024-03-12: Comprehensive UI refactoring and drag-and-drop implementation
+- 2024-03-12: Fixed method name mismatch in MainWindow initialization (disable_tabs_until_data_loaded -> disable_tabs_except_import)
+- 2024-03-12: Fixed chart coloring consistency in update_chart method
+- 2024-03-12: Fixed double file dialog issue by adding debounce mechanism and dialog active flag
+- 2024-03-12: Added missing set_config_manager method to ImportArea class
+- 2024-03-12: Enhanced double file dialog prevention with class-level flags and improved signal management
+- 2024-03-12: Enhanced report chart generation with consistent multi-color styling for all chart types
+- 2024-03-12: Implemented missing update_available_measures and update_sort_options methods for Charts tab
+- 2024-03-12: Implemented missing connect_signals method to properly connect all UI element signals
+- 2024-03-12: Fixed QAction import error (moved from QtWidgets to QtGui)
+- 2024-03-12: Implemented missing export functionality for Raw Data and Analysis tabs
+- 2024-03-12: Restored missing report generation methods and fixed connect_signals implementation
 - 2024-03-13: Enhanced Windows-specific drag and drop compatibility with detailed logging
 - 2024-03-13: Improved German umlaut handling by integrating enhanced DataProcessor methods throughout the application
 - 2024-03-13: Updated `load_csv_file` to use the new `read_csv_with_encoding_fix` function for better umlaut handling
@@ -194,26 +205,33 @@ alwaysApply: false
 - 2024-07-06: Enhanced file operation functions to accept both string and Path objects
 - 2024-07-06: Improved ConfigManager path handling to use Path objects consistently
 - 2024-07-06: Updated DataProcessor file operations to use pathlib properly
+- 2024-07-15: Fixed bar chart duplicate number labels by adding text clearing code before new labels are drawn
+- 2024-07-15: Fixed line chart functionality by restructuring the implementation to properly handle both date and non-date categories
+- 2024-07-15: Enhanced chart code structure by removing duplicate implementations and nested if/else blocks
+- 2024-07-15: Improved chart text object handling and formatting for better visualization
+- 2024-07-15: Commented out duplicate generate_chart_for_report method to prevent conflicts
 
 ## Current Tasks
 
-### 2024-03-12: Fixed Chart Styling and File Dialog Issues
+### 2024-07-15: Fixed Chart Issues - Duplicate Labels and Line Chart Functionality
 
-- **Task**: Fix chart styling in the Charts tab and resolve the double file dialog issue
+- **Task**: Fix bar chart duplicate number labels and line chart functionality
 - **Status**: Completed
 - **Details**:
-  - Fixed chart styling in the Charts tab by enhancing the `MplCanvas` class with new helper methods:
-    - Added `apply_style_to_axes` method to allow styling specific axes objects
-    - Added `get_tableau_colors` method to provide a consistent color palette for charts
-    - Updated the `update_chart` method to use these new helper methods
-    - Improved pie chart handling to limit slices to top 9 + "Others" for better readability
-  - Fixed the double file dialog issue by:
-    - Modifying the `connect_signals` method to properly connect the menu action to the `ImportArea.open_file_dialog` method directly
-    - Updating the `open_csv_file` method to redirect to `ImportArea.open_file_dialog` for backward compatibility
-    - Adding proper error handling for signal connections to prevent crashes when UI components aren't fully initialized
-  - Fixed Player Performance report error by updating the `create_player_performance_html` method to use 'SCORE' instead of 'TOTAL_SCORE'
-  - All changes were made with careful attention to maintain backward compatibility and ensure robust error handling
-  - The application now runs without errors, with properly styled charts and a smoother file selection experience
+  - Fixed issues with duplicate number labels on bar charts:
+    - Added code to clear existing text objects (`ax.texts.remove()`) before adding new ones
+    - Applied the fix consistently to Bar Chart, Horizontal Bar Chart, and Pie Chart
+  - Fixed line chart functionality:
+    - Restructured the implementation to correctly handle both date and non-date categories
+    - Added proper sorting for date-based line charts
+    - Implemented correct x-axis labeling for non-date categories
+    - Added text label positioning with duplicate prevention
+  - Fixed code structure issues:
+    - Removed a duplicate implementation of the generate_chart_for_report method
+    - Fixed improper nested if/else blocks in chart rendering code
+    - Enhanced pie chart text styling for better visibility
+  - Tested the application extensively to ensure charts display correctly
+  - Updated documentation with the changes made
 
 ## Dependencies
 - PySide6: 6.8.2.1
@@ -285,3 +303,18 @@ alwaysApply: false
 - The DataProcessor.analyze_data method returns a dictionary of DataFrames with various analysis types
 - The duplicate method was causing the app to display raw data instead of processed data
 - Debug logging was added to trace the data flow in the update_analysis_view method
+
+## Recent Tasks (2024-03-12)
+
+### Fixed Chart Coloring Issue
+- Problem: Charts in the Charts tab were not being colored properly. All bars/segments were using the same color.
+- Solution: Updated the `update_chart` method in `mainwindow.py` to use multiple colors from the TABLEAU_COLORS palette.
+- Also enhanced the `MplCanvas` class to provide better style application methods and color palette access.
+
+### Fixed Double File Dialog Issue
+- Problem: When selecting a CSV file to import, a second file dialog would appear after the first one was closed.
+- Root Cause: Multiple signal connections were triggering file dialogs, and there was no mechanism to prevent rapid successive calls.
+- Solution: 
+  1. Added a flag `_file_dialog_active` to prevent multiple file dialogs from opening simultaneously
+  2. Added a debounce mechanism to the `load_csv_file` method to prevent multiple calls in quick succession
+  3. Updated the `open_csv_file` method to check if a file dialog is already active

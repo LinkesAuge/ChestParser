@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QPushButton, QLabel,
                              QSplitter)
 from PySide6.QtCore import Signal, Qt
 from pathlib import Path
+import os  # For os.path.basename
 
 class ImportArea(QWidget):
     """
@@ -26,7 +27,19 @@ class ImportArea(QWidget):
         super().__init__(parent)
         self.debug = debug
         self.main_window = self.get_main_window()
+        self.config_manager = None
         self._setup_ui()
+    
+    def set_config_manager(self, config_manager):
+        """
+        Set the configuration manager for this import area.
+        
+        Args:
+            config_manager: The configuration manager instance to use
+        """
+        self.config_manager = config_manager
+        if self.debug:
+            print("ConfigManager set for ImportArea")
     
     def get_main_window(self):
         """Find the main window parent"""
@@ -201,27 +214,72 @@ class ImportArea(QWidget):
     
     def open_file_dialog(self):
         """Open a file dialog to select a CSV file"""
-        start_dir = ""
-        if self.main_window and hasattr(self.main_window, 'config_manager'):
-            # Get the import directory from config
-            start_dir = self.main_window.config_manager.get_import_directory()
+        if self.debug:
+            print(f"\n--- IMPORTAREA.OPEN_FILE_DIALOG CALLED ---\n")
+            import traceback
+            traceback.print_stack()  # Print stack trace to identify caller
         
-        filepath, _ = QFileDialog.getOpenFileName(
-            self, "Open CSV File", start_dir, "CSV Files (*.csv)"
-        )
-        
-        if filepath:
+        # Use a static/class-level flag to ensure only one dialog is active across all instances
+        if hasattr(ImportArea, '_dialog_active') and ImportArea._dialog_active:
             if self.debug:
-                print(f"File selected via dialog: {filepath}")
+                print("A file dialog is already active, ignoring duplicate call")
+            return
+        
+        # Set dialog active at class level
+        ImportArea._dialog_active = True
+        
+        # Also set the dialog active flag in the main window if it exists
+        # This is for compatibility with existing code that checks this flag
+        if self.main_window and hasattr(self.main_window, '_file_dialog_active'):
+            self.main_window._file_dialog_active = True
+        
+        try:
+            start_dir = ""
+            # First try to use the local config_manager if available
+            if self.config_manager is not None:
+                start_dir = self.config_manager.get_import_directory()
+                if self.debug:
+                    print(f"Using import directory from local config_manager: {start_dir}")
+            # Fall back to main_window's config_manager if needed
+            elif self.main_window and hasattr(self.main_window, 'config_manager'):
+                start_dir = self.main_window.config_manager.get_import_directory()
+                if self.debug:
+                    print(f"Using import directory from main_window.config_manager: {start_dir}")
             
-            # Update file info label
-            self.file_info.setText(f"Selected: {os.path.basename(filepath)}")
+            filepath, _ = QFileDialog.getOpenFileName(
+                self, "Open CSV File", start_dir, "CSV Files (*.csv)"
+            )
             
-            # Update import directory in config if possible
-            if self.main_window and hasattr(self.main_window, 'config_manager'):
-                self.main_window.config_manager.set_import_directory(str(Path(filepath).parent))
+            if filepath:
+                if self.debug:
+                    print(f"File selected via dialog: {filepath}")
+                
+                # Update file info label
+                self.file_info.setText(f"Selected: {os.path.basename(filepath)}")
+                
+                # Update import directory in config if possible
+                # First try to use the local config_manager if available
+                if self.config_manager is not None:
+                    self.config_manager.set_import_directory(str(Path(filepath).parent))
+                    if self.debug:
+                        print(f"Updated import directory in local config_manager: {str(Path(filepath).parent)}")
+                # Fall back to main_window's config_manager if needed
+                elif self.main_window and hasattr(self.main_window, 'config_manager'):
+                    self.main_window.config_manager.set_import_directory(str(Path(filepath).parent))
+                    if self.debug:
+                        print(f"Updated import directory in main_window.config_manager: {str(Path(filepath).parent)}")
+                
+                # Emit signal with filepath
+                if self.debug:
+                    print(f"Emitting fileSelected signal with: {filepath}")
+                self.fileSelected.emit(filepath)
+        finally:
+            # Reset the dialog active flags
+            if hasattr(ImportArea, '_dialog_active'):
+                ImportArea._dialog_active = False
             
-            # Emit signal with filepath
-            self.fileSelected.emit(filepath)
+            # Also reset the main window flag for compatibility
+            if self.main_window and hasattr(self.main_window, '_file_dialog_active'):
+                self.main_window._file_dialog_active = False
 
 

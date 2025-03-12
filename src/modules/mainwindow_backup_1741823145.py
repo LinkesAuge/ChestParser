@@ -668,14 +668,6 @@ class MainWindow(QMainWindow):
                     wedgeprops={'edgecolor': self.chart_canvas.style_presets['default']['bg_color'], 'linewidth': 1}
                 )
                 # Style the pie chart text
-                for text in texts:
-                    text.set_color(self.chart_canvas.style_presets['default']['text_color'])
-                for autotext in autotexts:
-                    autotext.set_color('white')
-                    autotext.set_fontweight('bold')
-                ax.set_title(f'{chart_title} Distribution')
-                
-            elif chart_type == "Line Chart":
                 # For date data, a line chart makes sense as a single line
                 if category_column == 'DATE':
                     # Sort data by date for line chart to ensure proper chronological order
@@ -723,28 +715,47 @@ class MainWindow(QMainWindow):
                     ax.set_ylabel(f'{measure.replace("_", " ").title()}')
                     ax.set_title(f'{chart_title} Trends')
                     plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-            
-            else:
-                # For non-date categories, use a scatter plot with different colors
-                for i, (category, value) in enumerate(zip(data[category_column].values, data[measure].values)):
-                    color_index = i % len(TABLEAU_COLORS)
-                    ax.scatter(i, value, 
-                            color=TABLEAU_COLORS[color_index],
-                            s=100, zorder=10)
+                else:
+                    # For non-date categories, create a line chart with points at regular intervals
+                    x = np.arange(len(data))
+                    line = ax.plot(x, data[measure].values, 
+                                  marker='o', color=TABLEAU_COLORS[2],  # Green
+                                  linewidth=2, markersize=8)
                     
-                    # Connect points with lines if there are more than one
-                    if i > 0:
-                        # Draw line between points
-                        ax.plot([i-1, i], [data[measure].values[i-1], value], 
-                              color=TABLEAU_COLORS[color_index % len(TABLEAU_COLORS)],
-                              linewidth=1.5, alpha=0.7, zorder=5)
-                
-                # Set the x-tick positions and labels        
-                ax.set_xticks(range(len(data)))
-                ax.set_xticklabels(data[category_column].values)
-                ax.set_ylabel(f'{measure.replace("_", " ").title()}')
-                ax.set_title(f'{chart_title} Comparison')
-                plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+                    # Add values at each point if requested
+                    if show_values:
+                        for i, y in enumerate(data[measure].values):
+                            ax.text(i, y, f'{y:,.0f}', ha='center', va='bottom',
+                                   color=self.chart_canvas.style_presets['default']['text_color'],
+                                   fontweight='bold')
+                    
+                    # Set x-ticks to category names
+                    ax.set_xticks(x)
+                    ax.set_xticklabels(data[category_column].values)
+                    ax.set_ylabel(f'{measure.replace("_", " ").title()}')
+                    ax.set_title(f'{chart_title} Trends')
+                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+            else:
+                    # For non-date categories, use a scatter plot with different colors
+                    for i, (category, value) in enumerate(zip(data[category_column].values, data[measure].values)):
+                        color_index = i % len(TABLEAU_COLORS)
+                        ax.scatter(i, value, 
+                                color=TABLEAU_COLORS[color_index],
+                                s=100, zorder=10)
+                        
+                        # Connect points with lines if there are more than one
+                        if i > 0:
+                            # Draw line between points
+                            ax.plot([i-1, i], [data[measure].values[i-1], value], 
+                                  color=TABLEAU_COLORS[color_index % len(TABLEAU_COLORS)],
+                                  linewidth=1.5, alpha=0.7, zorder=5)
+                    
+                    # Set the x-tick positions and labels        
+                    ax.set_xticks(range(len(data)))
+                    ax.set_xticklabels(data[category_column].values)
+                    ax.set_ylabel(f'{measure.replace("_", " ").title()}')
+                    ax.set_title(f'{chart_title} Comparison')
+                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
                 
                 # Add values on data points if requested
             if show_values:
@@ -2865,6 +2876,304 @@ class MainWindow(QMainWindow):
                 f"An error occurred while exporting: {str(e)}",
                 QMessageBox.Ok
             )
+
+    # This is a duplicate method - removed to prevent conflicts
+    # def generate_chart_for_report(self, chart_type, category_field, title):
+    #     """
+    #     Generate a chart image for the report.
+        
+    #     This helper method creates a chart image file that can be included in HTML reports.
+        
+    #     Args:
+    #         chart_type (str): The type of chart to generate (e.g., 'Bar Chart', 'Pie Chart')
+    #         category_field (str): The field to use for categorization (e.g., 'PLAYER', 'CHEST')
+    #         title (str): The title of the chart
+            
+    #     Returns:
+    #         str: The path to the generated chart image file, or None on failure
+    #     """
+    #     try:
+    #         # Create a temporary file for the chart
+    #         temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+    #         temp_file.close()
+            
+    #         # Determine which dataset to use based on category_field
+    #         if category_field == 'PLAYER':
+    #             if 'player_totals' not in self.analysis_results or self.analysis_results['player_totals'].empty:
+    #                 return None
+    #             df = self.analysis_results['player_totals']
+    #         elif category_field == 'CHEST':
+    #             if 'chest_totals' not in self.analysis_results or self.analysis_results['chest_totals'].empty:
+    #                 return None
+    #             df = self.analysis_results['chest_totals']
+    #         elif category_field == 'SOURCE':
+    #             if 'source_totals' not in self.analysis_results or self.analysis_results['source_totals'].empty:
+    #                 return None
+    #             df = self.analysis_results['source_totals']
+    #         elif category_field == 'DATE':
+    #             if 'date_totals' not in self.analysis_results or self.analysis_results['date_totals'].empty:
+    #                 return None
+    #             df = self.analysis_results['date_totals']
+    #         else:
+    #             return None
+            
+    #         # Create the figure for the chart
+    #         plt.figure(figsize=(10, 6), facecolor='#1A2742')
+            
+    #         # Set the style for the chart - dark background with white text
+    #         plt.style.use('dark_background')
+            
+    #         # Get current axis
+    #         ax = plt.gca()
+            
+    #         # Set axis colors
+    #         ax.set_facecolor('#1A2742')
+    #         ax.xaxis.label.set_color('#FFFFFF')
+    #         ax.yaxis.label.set_color('#FFFFFF')
+    #         ax.title.set_color('#D4AF37')
+    #         ax.tick_params(colors='#FFFFFF')
+            
+    #         # Define Tableau-like colors for consistent styling
+    #         TABLEAU_COLORS = [
+    #             '#D4AF37',  # Gold
+    #             '#5991C4',  # Blue
+    #             '#6EC1A7',  # Green
+    #             '#D46A5F',  # Red
+    #             '#A073D1',  # Purple
+    #             '#F49E5D',  # Orange
+    #             '#9DC375',  # Light Green
+    #             '#C4908F',  # Rose
+    #             '#8595A8',  # Gray Blue
+    #             '#D9A471',  # Tan
+    #         ]
+            
+    #         # Generate the appropriate type of chart
+    #         if chart_type == 'Bar Chart':
+    #             if category_field == 'PLAYER':
+    #                 # Use TOTAL_SCORE for players if available
+    #                 score_col = 'TOTAL_SCORE' if 'TOTAL_SCORE' in df.columns else 'SCORE'
+    #                 data = df.sort_values(score_col, ascending=False).head(15)  # Limit to top 15 for readability
+    #                 bars = plt.bar(data['PLAYER'], data[score_col], color=TABLEAU_COLORS)
+    #                 plt.xticks(rotation=45, ha='right', color='white')
+    #                 plt.ylabel('Score', color='white')
+    #                 plt.title('Player Total Scores', color='#D4AF37', fontsize=14)
+                    
+    #                 # Add values on top of bars
+    #                 for bar in bars:
+    #                     height = bar.get_height()
+    #                     plt.text(bar.get_x() + bar.get_width()/2., height,
+    #                           f'{height:,.0f}', ha='center', va='bottom', color='white', fontweight='bold')
+                    
+    #             elif category_field == 'CHEST':
+    #                 data = df.sort_values('SCORE', ascending=False)
+    #                 bars = plt.bar(data['CHEST'], data['SCORE'], color=TABLEAU_COLORS)
+    #                 plt.xticks(rotation=45, ha='right', color='white')
+    #                 plt.ylabel('Score', color='white')
+    #                 plt.title('Scores by Chest Type', color='#D4AF37', fontsize=14)
+                    
+    #                 # Add values on top of bars
+    #                 for bar in bars:
+    #                     height = bar.get_height()
+    #                     plt.text(bar.get_x() + bar.get_width()/2., height,
+    #                           f'{height:,.0f}', ha='center', va='bottom', color='white', fontweight='bold')
+                    
+    #             elif category_field == 'SOURCE':
+    #                 data = df.sort_values('SCORE', ascending=False)
+    #                 bars = plt.bar(data['SOURCE'], data['SCORE'], color=TABLEAU_COLORS)
+    #                 plt.xticks(rotation=45, ha='right', color='white')
+    #                 plt.ylabel('Score', color='white')
+    #                 plt.title('Scores by Source', color='#D4AF37', fontsize=14)
+                    
+    #                 # Add values on top of bars
+    #                 for bar in bars:
+    #                     height = bar.get_height()
+    #                     plt.text(bar.get_x() + bar.get_width()/2., height,
+    #                           f'{height:,.0f}', ha='center', va='bottom', color='white', fontweight='bold')
+                    
+    #             elif category_field == 'DATE':
+    #                 # For dates, sort chronologically and use a line chart instead of bar
+    #                 data = df.sort_values('DATE')
+    #                 plt.plot(data['DATE'], data['SCORE'], marker='o', color=TABLEAU_COLORS[0], linewidth=2)
+    #                 plt.xticks(rotation=45, ha='right', color='white')
+    #                 plt.ylabel('Score', color='white')
+    #                 plt.title('Scores by Date', color='#D4AF37', fontsize=14)
+    #                 plt.grid(True, alpha=0.3, color='#3A4762')
+                    
+    #                 # Add values on data points
+    #                 for i, value in enumerate(data['SCORE']):
+    #                     plt.annotate(f'{value:,.0f}', 
+    #                               (data['DATE'].iloc[i], value),
+    #                               textcoords="offset points", 
+    #                               xytext=(0,10), 
+    #                               ha='center',
+    #                               color='white',
+    #                               fontweight='bold')
+                
+    #         elif chart_type == 'Pie Chart':
+    #             if category_field == 'CHEST':
+    #                 data = df.sort_values('SCORE', ascending=False)
+                    
+    #                 # If we have too many slices, limit to top 9 + "Others"
+    #                 if len(data) > 10:
+    #                     top_items = data.iloc[:9].copy()
+    #                     others_sum = data.iloc[9:]['SCORE'].sum()
+    #                     others_row = pd.DataFrame({
+    #                         'CHEST': ['Others'],
+    #                         'SCORE': [others_sum]
+    #                     })
+    #                     data = pd.concat([top_items, others_row]).reset_index(drop=True)
+                    
+    #                 # Create color list for pie slices (one color per slice)
+    #                 colors = [TABLEAU_COLORS[i % len(TABLEAU_COLORS)] for i in range(len(data))]
+                        
+    #                 wedges, texts, autotexts = plt.pie(
+    #                     data['SCORE'], 
+    #                     labels=data['CHEST'], 
+    #                     autopct='%1.1f%%', 
+    #                     startangle=90, 
+    #                     colors=colors,
+    #                     wedgeprops={'edgecolor': temp_canvas.style_presets['default']['bg_color'], 'linewidth': 1}
+    #                 )
+    #                 plt.axis('equal')
+    #                 plt.title('Chest Type Distribution by Score', color='#D4AF37', fontsize=14)
+                    
+    #                 # Make text visible on dark background
+    #                 for text in texts:
+    #                     text.set_color('white')
+    #                 for autotext in autotexts:
+    #                     autotext.set_color('white')
+    #                     autotext.set_fontweight('bold')
+                        
+    #             elif category_field == 'SOURCE':
+    #                 data = df.sort_values('SCORE', ascending=False)
+                    
+    #                 # If we have too many slices, limit to top 9 + "Others"
+    #                 if len(data) > 10:
+    #                     top_items = data.iloc[:9].copy()
+    #                     others_sum = data.iloc[9:]['SCORE'].sum()
+    #                     others_row = pd.DataFrame({
+    #                         'SOURCE': ['Others'],
+    #                         'SCORE': [others_sum]
+    #                     })
+    #                     data = pd.concat([top_items, others_row]).reset_index(drop=True)
+                    
+    #                 # Create color list for pie slices (one color per slice)
+    #                 colors = [TABLEAU_COLORS[i % len(TABLEAU_COLORS)] for i in range(len(data))]
+                        
+    #                 wedges, texts, autotexts = plt.pie(
+    #                     data['SCORE'], 
+    #                     labels=data['SOURCE'], 
+    #                     autopct='%1.1f%%', 
+    #                     startangle=90, 
+    #                     colors=colors,
+    #                     wedgeprops={'edgecolor': temp_canvas.style_presets['default']['bg_color'], 'linewidth': 1}
+    #                 )
+    #                 plt.axis('equal')
+    #                 plt.title('Source Distribution by Score', color='#D4AF37', fontsize=14)
+                    
+    #                 # Make text visible on dark background
+    #                 for text in texts:
+    #                     text.set_color('white')
+    #                 for autotext in autotexts:
+    #                     autotext.set_color('white')
+    #                     autotext.set_fontweight('bold')
+                
+    #         elif chart_type == 'Stacked Bar Chart' and category_field == 'PLAYER':
+    #             # Get the player and source columns
+    #             player_col = 'PLAYER'
+                
+    #             # Get columns that represent sources (but not the special columns)
+    #             data_cols = [col for col in df.columns if col not in 
+    #                         ['PLAYER', 'TOTAL_SCORE', 'CHEST_COUNT', 'AVG_SCORE']]
+                
+    #             if data_cols:
+    #                 # Sort by total score
+    #                 if 'TOTAL_SCORE' in df.columns:
+    #                     data = df.sort_values('TOTAL_SCORE', ascending=False).head(10)  # Limit to top 10
+    #                 else:
+    #                     data = df.head(10)  # Just use first 10 rows if no TOTAL_SCORE
+                    
+    #                 # Create the stacked bar chart
+    #                 bottom = np.zeros(len(data))
+    #                 for i, col in enumerate(data_cols):
+    #                     if col in data.columns:
+    #                         values = data[col].fillna(0).values
+    #                         plt.bar(data[player_col], values, bottom=bottom, 
+    #                                label=col, color=TABLEAU_COLORS[i % len(TABLEAU_COLORS)])
+    #                         bottom += values
+                    
+    #                 plt.xticks(rotation=45, ha='right', color='white')
+    #                 plt.ylabel('Score', color='white')
+    #                 plt.title('Player Scores by Source', color='#D4AF37', fontsize=14)
+                    
+    #                 # Customize legend
+    #                 legend = plt.legend(title='Source', bbox_to_anchor=(1.05, 1), loc='upper left')
+    #                 legend.get_title().set_color('white')
+    #                 for text in legend.get_texts():
+    #                     text.set_color('white')
+                    
+    #                 plt.tight_layout()
+            
+    #         elif chart_type == 'Bubble Chart' and category_field == 'PLAYER':
+    #             # Check if we have the necessary columns
+    #             if 'TOTAL_SCORE' in df.columns and 'CHEST_COUNT' in df.columns:
+    #                 # Filter out any rows with zeroes to avoid divide by zero
+    #                 data = df[(df['TOTAL_SCORE'] > 0) & (df['CHEST_COUNT'] > 0)]
+                    
+    #                 if not data.empty:
+    #                     # Calculate efficiency for sizing the bubbles
+    #                     efficiency = data['TOTAL_SCORE'] / data['CHEST_COUNT']
+                        
+    #                     # Calculate sizes proportional to efficiency
+    #                     max_size = 1000
+    #                     min_size = 100
+    #                     if efficiency.max() > efficiency.min():
+    #                         size_scale = ((efficiency - efficiency.min()) / 
+    #                                      (efficiency.max() - efficiency.min())) * (max_size - min_size) + min_size
+    #                     else:
+    #                         size_scale = np.ones(len(efficiency)) * max_size
+                        
+    #                     # Create the bubble chart
+    #                     scatter = plt.scatter(data['CHEST_COUNT'], data['TOTAL_SCORE'], 
+    #                                         s=size_scale, alpha=0.6, 
+    #                                         c=range(len(data)), cmap='viridis')
+                        
+    #                     # Add player labels
+    #                     for i, player in enumerate(data['PLAYER']):
+    #                         plt.annotate(player, 
+    #                                     (data['CHEST_COUNT'].iloc[i], data['TOTAL_SCORE'].iloc[i]),
+    #                                     xytext=(5, 5), textcoords='offset points',
+    #                                     color='white', fontweight='bold')
+                        
+    #                     plt.xlabel('Chest Count', color='white')
+    #                     plt.ylabel('Total Score', color='white')
+    #                     plt.title('Player Efficiency (Score vs Chest Count)', color='#D4AF37', fontsize=14)
+                        
+    #                     # Add a colorbar to show efficiency
+    #                     colorbar = plt.colorbar(scatter)
+    #                     colorbar.set_label('Efficiency (pts/chest)', color='white')
+    #                     colorbar.ax.yaxis.set_tick_params(color='white')
+    #                     plt.setp(plt.getp(colorbar.ax.axes, 'yticklabels'), color='white')
+            
+    #         # Set spine colors to match theme
+    #         for spine in ax.spines.values():
+    #             spine.set_color('#3A4762')
+            
+    #         # Setup grid
+    #         ax.grid(True, color='#3A4762', linestyle='--', alpha=0.3)
+            
+    #         # Adjust layout and save with transparent background
+    #         plt.tight_layout()
+    #         plt.savefig(temp_file.name, format='png', dpi=150, bbox_inches='tight', 
+    #                   facecolor='#1A2742', edgecolor='none')
+    #         plt.close()
+            
+    #         return temp_file.name
+            
+    #     except Exception as e:
+    #         print(f"Error generating chart for report: {e}")
+    #         traceback.print_exc()
+    #         return None
 
     def generate_report(self):
         """

@@ -19,10 +19,39 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
   - Button in the dedicated import area
 - Raw data viewing with filtering capabilities
 - Data analysis with customizable filters
-- Chart generation and visualization with extensive customization options
+- Chart generation and visualization with extensive customization options:
+  - Bar charts with customizable colors for each bar
+  - Horizontal bar charts for better readability with long labels
+  - Pie charts with distinct color segments
+  - Line charts for trend analysis
 - Comprehensive report generation with export to HTML/PDF
 - Export functionality for analysis results
 - Total Battle-inspired UI theme with dark blue and gold accents
+- Robust error handling and user-friendly feedback
+
+## Recent Improvements
+- Fixed double file dialog issue when importing CSV files
+- Fixed overlapping charts in the charts tab
+- Fixed missing background color in reports
+- Added missing export_report method for report exporting
+- Enhanced chart visualization with distinct colors for different data points
+- Improved file dialog handling to prevent duplicate dialogs
+- Added debounce mechanism for file loading to improve stability
+- Enhanced MplCanvas class with better style application methods
+- Fixed method name mismatch in MainWindow initialization ensuring proper tab disabling on startup
+- Added missing set_config_manager method to ImportArea class for proper configuration handling
+- Implemented enhanced double file dialog prevention with class-level flags and improved signal management
+- Enhanced report chart generation with consistent multi-color styling across all chart types
+- Fixed missing update_available_measures and update_sort_options methods for chart configuration
+- Implemented missing connect_signals method to properly connect all UI signals
+- Fixed QAction import error by moving it from QtWidgets to QtGui module
+- Implemented missing export functionality for Raw Data and Analysis tabs
+- Restored missing report generation methods and fixed signal connections for proper application functionality
+- Fixed bar chart duplicate number labels issue by clearing existing text objects before adding new ones
+- Fixed line chart functionality for both date and non-date categories with proper data visualization
+- Fixed code structure issues in chart generation with removal of duplicate implementations
+- Enhanced pie chart styling with consistent text color handling
+- Improved chart text positioning and formatting across all chart types
 
 ## Core Components
 
@@ -177,6 +206,28 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
     - Updating the open_csv_file method to redirect to ImportArea.open_file_dialog for backward compatibility
     - Adding proper error handling for signal connections to prevent crashes when UI components aren't fully initialized
   - Fixed Player Performance report error by updating the create_player_performance_html method to use 'SCORE' instead of 'TOTAL_SCORE'
+
+- **2024-03-12: Implemented Report Generation Functionality**
+  - Added the missing `generate_report` method to the MainWindow class to enable report generation
+  - Completed the `setup_report_tab` method to properly initialize the report view component
+  - Implemented comprehensive report generation with support for different report types:
+    - Full Report: Includes all data categories (Player, Chest, Source)
+    - Player Performance: Focuses on player-specific data and statistics
+    - Chest Type Analysis: Focuses on chest-specific data and statistics
+    - Source Analysis: Focuses on source-specific data and statistics
+  - Added support for customizable report content with options to include/exclude:
+    - Charts: Visual representations of data using various chart types
+    - Tables: Tabular data showing detailed information
+    - Statistics: Key metrics and highlights for each data category
+  - Implemented helper methods for generating different report sections:
+    - `_generate_charts_section`: Creates chart images for the report
+    - `_generate_tables_section`: Creates HTML tables from DataFrames
+    - `_generate_stats_section`: Creates statistical summaries
+    - Category-specific statistics methods for player, chest, and source data
+  - Enhanced the report view with a welcome message and instructions
+  - Ensured proper HTML styling with CSS for professional-looking reports
+  - Fixed the export functionality to properly save reports as HTML or PDF
+  - Added error handling and status updates throughout the report generation process
 
 - **2024-03-12: Fixed Missing Chart Generation in Reports**
   - Implemented the missing generate_chart_for_report method to create chart images for reports
@@ -349,3 +400,14 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
 - Ensured all CSV exports properly preserve special characters
 - Fixed an issue with CSV reading where umlauts could be improperly detected
 - Enhanced error handling for CSV loading and exporting operations
+- **2024-07-10: Fixed Report Generation Functionality**
+  - Fixed the missing implementation of the `create_full_report_html` method that was causing NoneType errors
+  - Implemented a comprehensive Full Report generation with multiple sections:
+    - Overview section with key statistics (total players, chest types, scores)
+    - Player Performance section with bar charts and data tables
+    - Chest Analysis section with pie charts, bar charts, and data tables
+    - Source Analysis section with pie charts, bar charts, and data tables
+  - Enhanced error handling for missing data with appropriate fallback content
+  - Ensured consistent styling across all report types with the Total Battle theme
+  - Added proper documentation with parameter descriptions and return values
+  - Improved report generation reliability by ensuring all report types have complete implementations

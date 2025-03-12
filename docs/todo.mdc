@@ -183,6 +183,11 @@ Implement a Report tab that was previously available before refactoring. The Rep
   - [x] Source Analysis
 - [x] Add HTML generation methods for each report type
 - [x] Ensure proper styling using the Total Battle theme
+- [x] Implement helper methods for generating different report sections:
+  - [x] `_generate_charts_section`: Creates chart images for the report
+  - [x] `_generate_tables_section`: Creates HTML tables from DataFrames
+  - [x] `_generate_stats_section`: Creates statistical summaries
+  - [x] Category-specific statistics methods for player, chest, and source data
 
 ### 3. Report Export Functionality
 - [x] Implement `export_report()` method
@@ -207,3 +212,24 @@ Implement a Report tab that was previously available before refactoring. The Rep
 ### 6. Documentation
 - [x] Update app_report.mdc with Report tab functionality
 - [x] Update memory.mdc with implementation details 
+
+# Todo List
+
+## Completed Tasks
+
+- [x] Fix double file dialog issue in ImportArea and MainWindow
+- [x] Add set_config_manager method to ImportArea class
+- [x] Add consistent multi-color styling to charts in report generation
+- [x] Fix missing update_available_measures and update_sort_options methods in Charts tab
+- [x] Implement missing connect_signals method to properly connect all UI signals
+- [x] Fix QAction import error (moved from QtWidgets to QtGui)
+- [x] Implement missing export functionality for Raw Data and Analysis tabs
+- [x] Restore missing report generation methods and fix connect_signals implementation
+
+## In Progress Tasks
+
+## Pending Tasks
+
+## German Umlaut Solution Implementation
+
+// ... existing code ... 
