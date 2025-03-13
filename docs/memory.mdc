@@ -424,6 +424,39 @@ alwaysApply: false
   - All chart functionality works normally once data is loaded
   - The chart system properly initializes to a default state during application startup
 
+## 2024-07-17: Fixed Export Button Errors and CHEST Category Chart Issues
+
+### Task
+Fix errors in the export functionality and CHEST grouping in Charts tab
+
+### Status
+Completed
+
+### Details
+- Fixed two critical issues that were affecting the application:
+  1. Export button error in Raw Data and Analysis tabs:
+     - The export buttons were throwing an error: `AttributeError: 'str' object has no attribute 'mkdir'`
+     - The root cause was that `ConfigManager.get_export_directory()` returns a string, but the code was trying to call `mkdir()` on it as if it were a Path object
+     - Modified both `export_raw_data` and `export_analysis_data` methods to convert the string path to a Path object using `export_dir = Path(self.config_manager.get_export_directory())`
+     - Added a comment to clarify the conversion purpose
+     - This ensures that directory creation works correctly before saving exported files
+
+  2. CHEST category chart issues in the Charts tab:
+     - The "Group by" option for CHEST wasn't working correctly, preventing visualization of chest-related data
+     - The issues were in the `_get_chart_data` method, which had incorrect indentation, missing error handling, and inconsistent data processing
+     - Completely refactored the method to ensure consistent handling of all data categories (PLAYER, CHEST, SOURCE, DATE)
+     - Added proper null checks for `analysis_results` at the beginning of the method
+     - Implemented consistent debug output for all data categories to aid in troubleshooting
+     - Fixed the return logic to ensure each code path properly returns either data or None
+     - Added detailed error messages to help diagnose issues in the future
+     - Ensured the method properly processes and returns chest_totals data when CHEST category is selected
+
+- These fixes improve the application's stability and ensure all features function as expected:
+  - Raw Data and Analysis export buttons now work correctly without errors
+  - Charts tab now correctly displays data for all group by options, including CHEST
+  - Error handling is more robust throughout the chart generation code
+  - Debug output is comprehensive and consistent across all data categories
+
 ## Dependencies
 - PySide6: 6.8.2.1
 - matplotlib: 3.10.1

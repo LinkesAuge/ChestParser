@@ -60,6 +60,9 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
 - Fixed Charts tab not displaying data after chart system rewrite by resolving duplicate method implementations and category format mismatches
 - Fixed NoneType error during chart initialization at startup by adding proper null checks for analysis_results
 - Fixed player grouping in charts to show source breakdown (Guild, Battle, Event, etc.) by using player_overview data
+- Fixed missing process_data method that was preventing CSV files from loading properly
+- Fixed export button errors in Raw Data and Analysis tabs by properly handling Path objects
+- Fixed CHEST category chart issues by refactoring the _get_chart_data method with consistent data category handling and improved error checking
 
 ## Core Components
 

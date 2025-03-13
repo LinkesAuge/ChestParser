@@ -567,37 +567,94 @@ class MainWindow(QMainWindow):
         """
         if self.debug:
             print(f"\n--- DEBUG: _get_chart_data called with category: {data_category} ---")
-            print(f"Available keys in analysis_results: {list(self.analysis_results.keys())}")
+            if hasattr(self, 'analysis_results') and self.analysis_results is not None:
+                print(f"Available keys in analysis_results: {list(self.analysis_results.keys())}")
+            else:
+                print("Analysis results not available")
+                return None
+        
+        # Check if analysis_results is available
+        if not hasattr(self, 'analysis_results') or self.analysis_results is None:
+            if self.debug:
+                print("No analysis_results available")
+            return None
         
         if data_category == "PLAYER":
             # Use player_overview instead of player_totals for PLAYER category
             if 'player_overview' in self.analysis_results:
                 data = self.analysis_results['player_overview'].copy()
-            if self.debug:
+                if self.debug:
                     print(f"Player data columns (from player_overview): {data.columns.tolist()}")
                     print(f"Player data sample:\n{data.head(3)}")
                     print(f"Player data shape: {data.shape}")
-            return data
-        elif 'player_totals' in self.analysis_results:
+                return data
+            elif 'player_totals' in self.analysis_results:
                 # Fallback to player_totals if player_overview is not available
                 data = self.analysis_results['player_totals'].copy()
                 if self.debug:
                     print(f"Player data columns (from player_totals): {data.columns.tolist()}")
                     print(f"Player data sample:\n{data.head(3)}")
                     print(f"Player data shape: {data.shape}")
-                    return data
-                else:
-                    if self.debug:
-                        print("Neither 'player_overview' nor 'player_totals' found in analysis_results")
+                return data
+            else:
+                if self.debug:
+                    print("Neither 'player_overview' nor 'player_totals' found in analysis_results")
+                return None
         elif data_category == "CHEST":
             if 'chest_totals' in self.analysis_results:
-                return self.analysis_results['chest_totals'].copy()
+                data = self.analysis_results['chest_totals'].copy()
+                
+                # Ensure we have TOTAL_SCORE (which is the same as SCORE for chests)
+                if 'SCORE' in data.columns and 'TOTAL_SCORE' not in data.columns:
+                    data['TOTAL_SCORE'] = data['SCORE']
+                    
+                # Calculate EFFICIENCY if we have both SCORE and CHEST_COUNT
+                if 'SCORE' in data.columns and 'CHEST_COUNT' in data.columns and 'EFFICIENCY' not in data.columns:
+                    data['EFFICIENCY'] = data['SCORE'] / data['CHEST_COUNT']
+                
+                if self.debug:
+                    print(f"Chest data columns: {data.columns.tolist()}")
+                    print(f"Chest data sample:\n{data.head(3)}")
+                    print(f"Chest data shape: {data.shape}")
+                return data
+            else:
+                if self.debug:
+                    print("'chest_totals' not found in analysis_results")
+                return None
         elif data_category == "SOURCE":
             if 'source_totals' in self.analysis_results:
-                return self.analysis_results['source_totals'].copy()
+                data = self.analysis_results['source_totals'].copy()
+                
+                # Ensure we have TOTAL_SCORE (which is the same as SCORE for sources)
+                if 'SCORE' in data.columns and 'TOTAL_SCORE' not in data.columns:
+                    data['TOTAL_SCORE'] = data['SCORE']
+                
+                if self.debug:
+                    print(f"Source data columns: {data.columns.tolist()}")
+                    print(f"Source data sample:\n{data.head(3)}")
+                    print(f"Source data shape: {data.shape}")
+                return data
+            else:
+                if self.debug:
+                    print("'source_totals' not found in analysis_results")
+                return None
         elif data_category == "DATE":
             if 'date_totals' in self.analysis_results:
-                return self.analysis_results['date_totals'].copy()
+                data = self.analysis_results['date_totals'].copy()
+                
+                # Ensure we have TOTAL_SCORE (which is the same as SCORE for dates)
+                if 'SCORE' in data.columns and 'TOTAL_SCORE' not in data.columns:
+                    data['TOTAL_SCORE'] = data['SCORE']
+                
+                if self.debug:
+                    print(f"Date data columns: {data.columns.tolist()}")
+                    print(f"Date data sample:\n{data.head(3)}")
+                    print(f"Date data shape: {data.shape}")
+                return data
+            else:
+                if self.debug:
+                    print("'date_totals' not found in analysis_results")
+                return None
         
         # If we get here, either the data_category is not recognized or the data is not available
         if self.debug:
@@ -2451,10 +2508,14 @@ class MainWindow(QMainWindow):
             self.chart_sort_column.addItem("PLAYER")
         elif data_category == "CHEST":
             self.chart_sort_column.addItem("CHEST")
+            self.chart_sort_column.addItem("CHEST_COUNT")
+            self.chart_sort_column.addItem("TOTAL_SCORE")
         elif data_category == "SOURCE":
             self.chart_sort_column.addItem("SOURCE")
+            self.chart_sort_column.addItem("CHEST_COUNT")
         elif data_category == "DATE":
             self.chart_sort_column.addItem("DATE")
+            self.chart_sort_column.addItem("CHEST_COUNT")
         
         # Select the first option by default
         if self.chart_sort_column.count() > 0:
@@ -3913,7 +3974,8 @@ class MainWindow(QMainWindow):
         # Get export directory from config
         export_dir = Path('data/exports')
         if hasattr(self, 'config_manager'):
-            export_dir = self.config_manager.get_export_directory()
+            # Convert the string path to a Path object
+            export_dir = Path(self.config_manager.get_export_directory())
             
         # Ensure export directory exists
         export_dir.mkdir(parents=True, exist_ok=True)
@@ -3968,7 +4030,8 @@ class MainWindow(QMainWindow):
         # Get export directory from config
         export_dir = Path('data/exports')
         if hasattr(self, 'config_manager'):
-            export_dir = self.config_manager.get_export_directory()
+            # Convert the string path to a Path object
+            export_dir = Path(self.config_manager.get_export_directory())
             
         # Ensure export directory exists
         export_dir.mkdir(parents=True, exist_ok=True)
