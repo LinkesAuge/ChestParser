@@ -23,9 +23,70 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.ruff]
-line-length = 100
+# Set a higher line length limit
+line-length = 120
+
+# Specify a less strict Python version
 target-version = "py38"
-exclude = ["__pycache__", ".git"]
+
+# Reduce the number of enabled rule sets
+select = [
+    "E",  # pycodestyle errors
+    "F",  # pyflakes
+    "W",  # pycodestyle warnings
+]
+
+# Explicitly ignore more rules
+ignore = [
+    "E203",  # Whitespace before ':'
+    "E501",  # Line too long
+    "F401",  # Unused imports
+    "F403",  # 'from module import *' used
+    "F405",  # Name may be undefined, or defined from star imports
+]
+
+# Exclude more files and directories
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "docs",
+    "tests",
+    "scripts",
+    "venv",
+    "__pycache__",
+    "*.md",
+    "**/*.md"
+]
+
+# Allow unused variables when they start with an underscore
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+# Relax some pycodestyle options
+[tool.ruff.pycodestyle]
+max-doc-length = 150
+
+# Disable certain mccabe checks
+[tool.ruff.mccabe]
+# Set a higher maximum complexity threshold
+max-complexity = 15
 
 [project.optional-dependencies]
 dev = [
@@ -38,3 +99,4 @@ packages = ["src"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+

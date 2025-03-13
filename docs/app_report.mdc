@@ -13,6 +13,155 @@ alwaysApply: false
 ## Overview
 The Total Battle Analyzer is a desktop application built with PySide6 that allows users to import, view, analyze, and visualize data from the Total Battle game. It provides a user-friendly GUI with multiple tabs for different functionality. The application features a dark blue and gold color theme inspired by the Total Battle game UI.
 
+## Refactoring Plans
+The application is currently undergoing a comprehensive refactoring effort, organized into multiple phases:
+
+### Phase 4 - User Interface Implementation
+Phase 4 focuses on implementing a modern, modular, and maintainable user interface for the Total Battle Analyzer. The refactoring is divided into five parts:
+
+1. **UI Foundation** - Setting up the core architecture, main window, navigation system, and theme manager.
+
+2. **UI Components** - Implementing reusable UI components:
+   - **Data Tables**: Advanced data display with filtering, sorting, and pagination
+   - **Charts and Visualizations**: Flexible chart widgets with multiple types (Bar, Pie, Line, etc.)
+   - **Input Forms**: Modular form system with validation and various field types
+   - **Custom Dialogs**: Reusable dialog windows for settings, confirmations, and data import/export
+   - **Notification System**: Toast notifications and status bar messages
+
+3. **Application Screens** - Creating application-specific screens:
+   - **Import Screen**: Data importing and preview functionality
+   - **Raw Data Screen**: Viewing and filtering raw data
+   - **Analysis Screen**: Data analysis with multiple views and filtering
+   - Each screen implemented as a separate module with consistent architecture
+   - Screens connected through a central screen manager for navigation
+
+4. **Charts and Visualization Screen** - Implementing advanced visualization capabilities:
+   - Chart control panel with comprehensive configuration options
+   - Chart display area using Matplotlib integration
+   - Multiple chart types (Bar, Horizontal Bar, Pie, Line, Area, Scatter)
+   - Chart customization including titles, colors, and styling
+   - Chart export in multiple formats (PNG, JPG, PDF, SVG)
+
+5. **Report Generation Screen** - Creating comprehensive reporting functionality:
+   - Report type selection (Comprehensive, Summary, Focused)
+   - Content customization options
+   - Format selection (HTML, PDF, Markdown)
+   - Report preview and export capabilities
+   - Template-based report generation
+
+The refactoring follows a layered approach with foundation, components, screens, and integration layers. This architecture separates UI logic from business logic, improves code modularity, and enhances user experience while maintaining the Total Battle-inspired dark blue and gold theme.
+
+### Phase 5 - Testing and Quality Assurance
+Phase 5 focuses on ensuring the reliability, correctness, and robustness of the Total Battle Analyzer application through comprehensive testing and quality assurance measures. This phase is divided into five parts:
+
+1. **Test Strategy and Framework** - Establishing the testing approach and infrastructure:
+   - Overall testing methodology and goals
+   - Test organization and naming conventions
+   - Test data generation and fixtures
+   - Custom test utilities and assertions
+
+2. **Unit Testing** - Testing individual components in isolation:
+   - Data layer tests for CSV parsing and data processing
+   - Service layer tests for analysis, charting, and reporting
+   - Utility function tests for helper methods
+   - Configuration management tests
+
+3. **Integration Testing** - Testing component interactions:
+   - Data-to-Service Integration Tests: Testing interactions between DataProcessor and various services (Analysis, Chart, Report)
+   - Service-to-Service Integration Tests: Testing how services collaborate (AnalysisService with ChartService, ChartService with ReportService)
+   - UI-to-Service Integration Tests: Testing UI components' integration with services, including screens and widgets
+   - End-to-End Workflow Tests: Testing complete user journeys from import to analysis to visualization to report generation
+   - Validation criteria for ensuring test completeness and quality
+   - Comprehensive test fixture management for realistic test scenarios
+
+4. **UI Testing and User Acceptance** - Testing the user interface:
+   - Screen component tests
+   - Widget functionality tests
+   - Navigation and workflow tests
+   - User interaction simulation
+
+5. **Performance, Security, and Deployment** - Final quality checks:
+   - Performance benchmarking with various data sizes
+   - Error handling and recovery testing
+   - Security and data validation testing
+   - Deployment and packaging verification
+
+The testing approach emphasizes automated testing, high code coverage, and realistic test scenarios. Tests are organized by type and component, with a focus on validating the application's core functionality and ensuring robustness across different environments and usage patterns.
+
+#### Phase 5 Part 4: UI Testing and User Acceptance
+
+The focus for UI testing is ensuring that all user interface components work correctly both in isolation and when integrated. This part includes tests for:
+
+##### UI Component Tests
+Tests each UI widget in isolation to verify proper rendering, state management, and signal handling:
+- Data Table Widget: Tests for initialization, data loading, sorting, selection, and clearing
+- Filter Panel Widget: Tests for initialization, filter creation, filter application, and clearing
+- Chart Widget: Tests for initialization, rendering charts, and clearing
+- File Selector Widget: Tests for initialization, file selection, and path management
+
+##### Screen Functionality Tests
+Ensures that each application screen provides the expected functionality:
+
+1. **Import Screen Tests**: Verifies proper:
+   - Initialization of all screen components
+   - File selection handling including dialog interactions
+   - Preview generation from selected files
+   - Import button state management (enabled/disabled)
+   - Signal emission on successful import
+
+2. **Raw Data Screen Tests**: Validates:
+   - Data loading and display functionality
+   - Filter application and resetting
+   - Data table operation (sorting, selection)
+   - Export functionality
+
+3. **Analysis Screen Tests**: Confirms:
+   - Analysis view switching
+   - Data loading and analysis execution
+   - Filter application to analysis results
+   - Export functionality for analysis data
+
+##### Navigation and Application Flow Tests
+Tests the proper navigation between different screens and end-to-end workflows in the application:
+
+1. **Main Window Navigation**: Validates screen transitions and state management
+   - Tests initial screen display
+   - Tests navigation between all application screens
+   - Ensures navigation controls are correctly enabled/disabled based on data availability
+   - Validates that screen transitions preserve application state
+
+2. **End-to-End Workflow Tests**: Tests complete user journeys across multiple screens
+   - Import to Analysis workflow: Tests the process from importing a data file to analyzing its contents
+   - Analysis to Charts workflow: Tests the flow from data analysis to chart generation
+   - Charts to Report workflow: Tests the process from chart creation to final report generation
+
+These tests ensure proper integration of all application components and validate that users can successfully complete common tasks within the application.
+
+##### User Acceptance Tests
+Comprehensive tests that simulate real-world user scenarios to validate that the application meets user requirements and expectations:
+
+1. **Automated User Journey Tests**:
+   - First-time User Experience: Tests a complete workflow from application launch to report generation
+   - Error Handling Experience: Validates that the application handles error conditions gracefully
+   - Data Persistence Experience: Ensures data is properly saved and retrieved between application sessions
+
+2. **User Acceptance Criteria**:
+   - Usability Criteria: Clear interface, logical navigation, helpful feedback, proper UI sizing, cross-platform compatibility
+   - Functional Criteria: Working workflows, data integrity, calculation accuracy, proper visualization, complete reporting
+   - Performance Criteria: Fast loading, responsive UI, efficient operations, appropriate resource usage
+   - Reliability Criteria: Error handling, data preservation, recovery capabilities, long-term stability
+
+These user acceptance tests provide the final validation that the application is ready for use, ensuring it not only functions correctly from a technical perspective but also provides a satisfactory user experience.
+
+**Implementation Approach**
+- Utilizes pytest and pytest-qt for automated UI testing
+- Employs fixtures for test environment setup
+- Uses mocking to isolate UI tests from service layer
+- Includes visual verification of UI components
+- Tests for proper handling of user interactions
+
+**Current Status**: Completed. All UI Testing components have been implemented, including UI Component Tests, Screen Functionality Tests, Navigation and Application Flow Tests, and User Acceptance Tests.
+
 ## Features
 - CSV file import via multiple methods:
   - Menu bar (File > Import CSV)
@@ -446,3 +595,271 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
     - Enhanced export functionality with dynamic filename generation and proper path handling
     - Added consistent error handling and user feedback for all export operations
   - These improvements ensure more stable application behavior, consistent chart styling, and reliable export functionality across all application components.
+
+## Phase 5: Testing and Quality Assurance
+
+### Phase 5 Part 5: Performance, Security, and Deployment Testing
+
+#### Performance Testing
+
+The performance testing plan for the Total Battle Analyzer includes a comprehensive set of tests to ensure the application performs efficiently under various conditions. The implementation covers the following key areas:
+
+1. **Load Testing with Variable Data Sizes**
+   - Tests using datasets ranging from small (100 rows) to extra-large (1,000,000 rows)
+   - Measures load times, per-row processing times, and establishes performance benchmarks
+   - Includes special handling for German umlauts and special characters
+
+2. **Stress Testing**
+   - Tests application behavior under concurrent operations (filtering, analysis, chart generation)
+   - Measures UI responsiveness during intensive operations
+   - Validates application stability under heavy load conditions
+
+3. **Memory Usage Optimization**
+   - Monitors memory consumption during data loading, analysis, and chart generation
+   - Identifies potential memory leaks using garbage collection validation
+   - Establishes memory usage benchmarks for various operations
+
+4. **CPU Usage Profiling**
+   - Utilizes Python's cProfile to identify CPU-intensive operations
+   - Provides detailed profiling for data loading, analysis, chart generation, and report creation
+   - Identifies optimization opportunities in the most resource-intensive code paths
+
+5. **Response Time Benchmarking**
+   - Measures response times for critical operations (filtering, analysis, chart generation)
+   - Tests UI operation responsiveness (tab switching, filter application, chart type changes)
+   - Establishes performance baselines for future comparison
+
+The performance tests include clear pass/fail criteria with assertions that verify the application meets specific performance requirements. Detailed metrics are collected for ongoing monitoring and comparison as the application evolves.
+
+#### Security Testing
+The security testing plan for the Total Battle Analyzer focuses on identifying and addressing potential security vulnerabilities. The implementation covers the following key areas:
+
+1. **Data Validation Testing**
+   - Validates handling of malformed CSV files with broken structure
+   - Tests handling of encoding issues, particularly with German umlauts
+   - Ensures proper response to files with missing required columns or invalid data types
+   - Verifies appropriate error messages that don't reveal sensitive information
+
+2. **Error Handling Security**
+   - Ensures error messages don't expose sensitive system information
+   - Prevents implementation details from being revealed in error messages
+   - Validates proper handling of permission issues and file access problems
+   - Tests that all errors are handled gracefully and securely
+
+3. **Dependency Security Scanning**
+   - Checks for known vulnerabilities in project dependencies using the "safety" package
+   - Verifies that all dependencies are pinned to specific versions
+   - Ensures the application isn't susceptible to supply chain attacks
+   - Documents allowed low-severity vulnerabilities with justification
+
+4. **File Path Traversal Protection**
+   - Tests for protection against accessing files outside intended directories
+   - Verifies path sanitization to remove potentially malicious components
+   - Ensures rejection of paths with directory traversal sequences (e.g., "../")
+   - Tests handling of URL-encoded traversal attempts
+
+5. **Secure Data Export**
+   - Validates that PDF exports are properly formatted and secure
+   - Ensures CSV exports properly escape data to prevent formula injection
+   - Verifies Excel exports are created without macros or external links
+   - Tests that temporary files are created with appropriate permissions and deleted after use
+
+The security testing implementation helps ensure that the Total Battle Analyzer maintains data integrity, protects user information, and prevents potential attacks or data breaches. The tests include clear assertions to verify compliance with security requirements.
+
+#### Deployment Testing
+The deployment testing plan for the Total Battle Analyzer ensures that the application can be reliably installed, configured, and run across different environments. The implementation covers the following key areas:
+
+1. **Installation Testing**
+   - Validates requirements installation in a fresh virtual environment
+   - Ensures the package itself can be installed in development mode
+   - Verifies the application can initialize without errors
+   - Tests that all required components are properly installed and accessible
+
+2. **Multi-Platform Compatibility Testing**
+   - Tests file path handling works correctly on Windows and Unix systems
+   - Ensures CSV file processing with different encodings and line endings
+   - Verifies German umlauts are handled properly across platforms
+   - Tests chart rendering and saving on different operating systems
+
+3. **Update and Upgrade Testing**
+   - Ensures user configurations are preserved during application updates
+   - Validates database schema migrations maintain data integrity
+   - Tests the application's ability to handle different versions of dependencies
+   - Verifies graceful handling of configuration format changes
+
+4. **Environment Configuration Testing**
+   - Validates configuration loading from files with appropriate overrides
+   - Tests environment variable integration for deployment-specific settings
+   - Ensures path normalization works correctly for various configuration scenarios
+   - Verifies fallback behavior when configuration files are missing
+
+5. **Distribution Package Testing**
+   - Tests creation of source distributions (sdist)
+   - Validates wheel package building and integrity
+   - Verifies executable creation with PyInstaller
+   - Ensures archive creation includes all necessary files and resources
+
+The deployment testing implementation helps ensure that the Total Battle Analyzer application can be reliably deployed, configured, and updated across different environments, providing a smooth experience for users regardless of their operating system or configuration preferences.
+
+### Phase 6: CI/CD, Monitoring and Maintenance
+
+Phase 6 focuses on establishing a comprehensive CI/CD pipeline, monitoring systems, and maintenance procedures for the Total Battle Analyzer application. This phase ensures reliable and consistent delivery, monitoring, and maintenance of the application throughout its lifecycle.
+
+#### Phase 6 Part 1: CI/CD Strategy and Infrastructure
+
+The CI/CD strategy for the Total Battle Analyzer establishes the foundation for automated building, testing, and deployment. Key implementation areas include:
+
+1. **CI/CD Workflow Definition**
+   - Comprehensive pipeline with stages: Code, Commit, Build, Test, Quality, Package, Deploy
+   - Clear definition of responsibilities and transitions between stages
+   - Well-defined quality gates ensuring application stability and reliability
+
+2. **Infrastructure Setup**
+   - GitHub Actions as the primary CI/CD server with workflow configurations
+   - Artifact repository management for secure storage of build outputs
+   - Secrets and credentials management for secure access to resources
+
+3. **Version Control Strategy**
+   - Simplified Gitflow branching strategy with main, develop, feature, release, and hotfix branches
+   - Branch protection rules ensuring code quality and review
+   - Automated semantic versioning for consistent release management
+
+4. **Environment Configuration**
+   - Clearly defined environments: Development, Testing, Staging, Production
+   - Environment-specific configuration management
+   - Role-based access control for different environments
+
+This strategic foundation provides a structured approach to automating the build, test, and deployment processes, ensuring consistent quality and reliability.
+
+#### Phase 6 Part 2: Continuous Integration Implementation
+
+The Continuous Integration implementation automates the build and validation processes for the Total Battle Analyzer. Key implementation areas include:
+
+1. **Code Repository Configuration**
+   - GitHub repository setup with branch protection rules
+   - Pre-commit hooks for code quality and formatting checks
+   - Pull request templates and contribution guidelines
+
+2. **Build Pipeline Configuration**
+   - Automated build process using GitHub Actions
+   - Dependency management with pinned versions
+   - Build artifact generation and validation
+
+3. **Code Quality Automation**
+   - Static code analysis with Ruff
+   - Type checking with mypy
+   - Code formatting enforcement with black
+   - Complexity analysis and maintainability checks
+
+4. **Unit and Integration Test Automation**
+   - Automated test execution for all code changes
+   - Test coverage reporting and enforcement
+   - Test result visualization and trending
+
+5. **Dependency Management**
+   - Dependency vulnerability scanning
+   - Automated dependency updates with Dependabot
+   - Dependency conflict resolution
+
+This implementation ensures that all code changes are automatically built, tested, and validated, maintaining high code quality and reducing integration issues.
+
+#### Phase 6 Part 3: Automated Testing Pipeline
+
+The Automated Testing Pipeline implements comprehensive testing automation for the Total Battle Analyzer. Key implementation areas include:
+
+1. **Test Infrastructure Setup**
+   - Test environment configuration with isolated resources
+   - Test data management and generation
+   - Test result collection and reporting
+
+2. **Unit Testing Framework**
+   - pytest configuration with plugins for coverage and reporting
+   - Test parameterization for comprehensive test cases
+   - Mock and fixture management for isolated testing
+
+3. **Integration Testing Framework**
+   - Component interaction testing
+   - Database integration testing
+   - External service mock integration
+
+4. **UI Automation Testing**
+   - PySide6 UI component testing
+   - UI interaction simulation
+   - Visual regression testing for UI components
+
+5. **Performance and Security Testing Automation**
+   - Automated performance test execution
+   - Security scanning integration
+   - Performance regression detection
+
+This testing pipeline ensures that all aspects of the application are thoroughly tested with every change, providing confidence in the application's quality.
+
+#### Phase 6 Part 4: Continuous Deployment Setup
+
+The Continuous Deployment setup automates the deployment of the Total Battle Analyzer to various environments. Key implementation areas include:
+
+1. **Deployment Pipeline Architecture**
+   - Environment-specific deployment workflows
+   - Approval gates for production deployments
+   - Deployment monitoring and notifications
+
+2. **Environment-Specific Configuration**
+   - Environment setup for development, testing, staging, and production
+   - Configuration management for each environment
+   - Access control for deployment environments
+
+3. **Deployment Automation and Tooling**
+   - Infrastructure-as-code with Terraform
+   - Automated deployment scripts
+   - Containerization with Docker for consistent deployments
+   - Database migration automation
+
+4. **Release Management**
+   - Semantic versioning and tagging
+   - Release candidate promotion workflow
+   - Automated release notes generation
+   - Feature flag management for controlled rollouts
+
+5. **Monitoring and Feedback Collection**
+   - Application performance monitoring with Prometheus and Grafana
+   - Error tracking with Sentry
+   - User feedback collection system
+   - Usage analytics tracking
+
+This implementation ensures reliable, consistent deployments across environments, with controlled feature rollouts and comprehensive monitoring.
+
+#### Phase 6 Part 5: Monitoring and Maintenance
+
+The Monitoring and Maintenance implementation establishes systems and procedures for ensuring the long-term reliability of the Total Battle Analyzer. Key implementation areas include:
+
+1. **Proactive Monitoring System**
+   - System health monitoring with Prometheus and Grafana
+   - Performance metrics collection for application components
+   - Real-time alerting based on defined thresholds
+   - Alert severity levels and response procedures
+
+2. **Automated Maintenance Procedures**
+   - Database maintenance automation
+   - Log rotation and archiving
+   - Scheduled backup procedures
+   - Dependency update scanning
+
+3. **Incident Response Framework**
+   - Incident classification system
+   - Response procedures for different severity levels
+   - Post-mortem analysis template
+   - Status page automation
+
+4. **Continuous Health Assessment**
+   - Regular security scanning
+   - Performance regression testing
+   - User experience monitoring
+   - Technical debt tracking
+
+5. **Documentation and Knowledge Management**
+   - Maintenance documentation standards
+   - Operational runbooks
+   - Knowledge base for common issues
+   - Maintenance training materials
+
+This comprehensive monitoring and maintenance system ensures the application remains reliable, performant, and secure throughout its lifecycle, with proactive issue detection and resolution.
