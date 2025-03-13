@@ -607,3 +607,66 @@ Completed
   - The "No file loaded" text now properly changes to "File loaded: [filename]" when a file is loaded
   - The update is synchronized with the already-working file info display in the ImportArea
   - The fix is properly documented in the `bugfixing.mdc` file
+
+## 2024-07-18: Fixed Duplicate Chart Updates and Redundant Data Loading in Charts Tab
+
+### Task: Fix redundant data loading and multiple chart updates when changing options in the Charts tab
+**Status**: Completed
+
+### Details
+- **Problem**: When changing options in the Charts tab, the application was triggering multiple redundant chart updates (up to 3 for a single change) and reloading data each time
+- **Investigation**:
+  - Analyzed the debug output showing multiple identical calls to `update_chart` and `_get_chart_data` for a single user action
+  - Discovered multiple issues contributing to the problem:
+    1. Multiple signal connections from the same UI control
+    2. Redundant `update_chart` calls in helper methods
+    3. No caching of data between updates
+    4. Signal propagation during dropdown population causing cascade updates
+    5. No debounce mechanism to prevent rapid updates
+- **Fix**:
+  - Implemented a comprehensive solution with multiple improvements:
+  
+  1. **Added debounce mechanism** to `update_chart`:
+    ```python
+    current_time = time.time()
+    if hasattr(self, '_last_chart_update_time') and (current_time - self._last_chart_update_time < 0.2):
+        if self.debug:
+            print(f"Skipping rapid chart update request")
+        return
+    self._last_chart_update_time = current_time
+    ```
+  
+  2. **Added signal blocking** to `update_available_measures` and `update_sort_options`:
+    ```python
+    was_blocked = self.chart_data_column.signalsBlocked()
+    self.chart_data_column.blockSignals(True)
+    try:
+        # Populate dropdown
+    finally:
+        self.chart_data_column.blockSignals(was_blocked)
+    ```
+  
+  3. **Preserved dropdown selections** during updates to prevent unnecessary changes
+  
+  4. **Implemented data caching** in `_get_chart_data`:
+    ```python
+    if hasattr(self, '_chart_data_cache') and self._chart_data_cache.get('category') == data_category:
+        return self._chart_data_cache.get('data')
+    ```
+  
+  5. **Enhanced `_update_chart_options** to block signals during updates:
+    ```python
+    def _update_chart_options(self):
+        # Block signals during updates
+        if hasattr(self, 'chart_data_column'):
+            self.chart_data_column.blockSignals(True)
+        # ...update options...
+        # Unblock signals and update chart once
+    ```
+  
+- **Results**:
+  - Chart is now updated only once per user action
+  - Data is loaded only when necessary, with subsequent updates using cached data
+  - Debug output shows cleaner logs with no duplicate "update_chart called" messages
+  - UI responds more quickly with significantly reduced processing
+  - All chart functionality continues to work correctly

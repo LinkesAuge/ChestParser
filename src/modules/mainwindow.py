@@ -445,6 +445,18 @@ class MainWindow(QMainWindow):
         This method gets the current chart settings from the UI, prepares the data,
         and creates the appropriate chart with consistent styling.
         """
+        import time  # Import at the beginning of the method for debounce mechanism
+        
+        # Implement a debounce mechanism to prevent multiple rapid updates
+        current_time = time.time()
+        if hasattr(self, '_last_chart_update_time') and (current_time - self._last_chart_update_time < 0.2):
+            if self.debug:
+                print(f"Skipping rapid chart update request (interval: {current_time - self._last_chart_update_time:.3f}s)")
+            return
+            
+        # Update the last update time
+        self._last_chart_update_time = current_time
+        
         if self.debug:
             print("Update chart called")
         
@@ -571,6 +583,13 @@ class MainWindow(QMainWindow):
         Returns:
             DataFrame: The chart data for the selected category
         """
+        # Cache check: If we've already retrieved this data category and nothing has changed,
+        # return the cached data to avoid redundant processing
+        if hasattr(self, '_chart_data_cache') and self._chart_data_cache.get('category') == data_category:
+            if self.debug:
+                print(f"Using cached data for category: {data_category}")
+            return self._chart_data_cache.get('data')
+        
         if self.debug:
             print(f"\n--- DEBUG: _get_chart_data called with category: {data_category} ---")
             if hasattr(self, 'analysis_results') and self.analysis_results is not None:
@@ -585,6 +604,9 @@ class MainWindow(QMainWindow):
                 print("No analysis_results available")
             return None
         
+        # Initialize the result data
+        data = None
+        
         if data_category == "PLAYER":
             # Use player_overview instead of player_totals for PLAYER category
             if 'player_overview' in self.analysis_results:
@@ -593,7 +615,6 @@ class MainWindow(QMainWindow):
                     print(f"Player data columns (from player_overview): {data.columns.tolist()}")
                     print(f"Player data sample:\n{data.head(3)}")
                     print(f"Player data shape: {data.shape}")
-                return data
             elif 'player_totals' in self.analysis_results:
                 # Fallback to player_totals if player_overview is not available
                 data = self.analysis_results['player_totals'].copy()
@@ -601,7 +622,6 @@ class MainWindow(QMainWindow):
                     print(f"Player data columns (from player_totals): {data.columns.tolist()}")
                     print(f"Player data sample:\n{data.head(3)}")
                     print(f"Player data shape: {data.shape}")
-                return data
             else:
                 if self.debug:
                     print("Neither 'player_overview' nor 'player_totals' found in analysis_results")
@@ -622,7 +642,6 @@ class MainWindow(QMainWindow):
                     print(f"Chest data columns: {data.columns.tolist()}")
                     print(f"Chest data sample:\n{data.head(3)}")
                     print(f"Chest data shape: {data.shape}")
-                return data
             else:
                 if self.debug:
                     print("'chest_totals' not found in analysis_results")
@@ -639,7 +658,6 @@ class MainWindow(QMainWindow):
                     print(f"Source data columns: {data.columns.tolist()}")
                     print(f"Source data sample:\n{data.head(3)}")
                     print(f"Source data shape: {data.shape}")
-                return data
             else:
                 if self.debug:
                     print("'source_totals' not found in analysis_results")
@@ -656,20 +674,28 @@ class MainWindow(QMainWindow):
                     print(f"Date data columns: {data.columns.tolist()}")
                     print(f"Date data sample:\n{data.head(3)}")
                     print(f"Date data shape: {data.shape}")
-                return data
             else:
                 if self.debug:
                     print("'date_totals' not found in analysis_results")
                 return None
+        else:
+            # If we get here, either the data_category is not recognized or the data is not available
+            if self.debug:
+                print(f"No data available for category '{data_category}' in analysis_results. Available keys: {list(self.analysis_results.keys() if self.analysis_results else [])}")
+            return None
+            
+        # Store the data in cache for future use
+        if not hasattr(self, '_chart_data_cache'):
+            self._chart_data_cache = {}
+        self._chart_data_cache['category'] = data_category
+        self._chart_data_cache['data'] = data
         
-        # If we get here, either the data_category is not recognized or the data is not available
-        if self.debug:
-            print(f"No data available for category '{data_category}' in analysis_results. Available keys: {list(self.analysis_results.keys() if self.analysis_results else [])}")
-        return None
+        return data
     
     def _get_category_column(self, data_category):
         """
         Get the appropriate category column based on data category.
+        
         
         Args:
             data_category: The data category (PLAYER, CHEST, SOURCE, DATE)
@@ -2436,96 +2462,164 @@ class MainWindow(QMainWindow):
         Update the available measures in the chart_data_column dropdown based on the selected data category.
         This method is called when the data category is changed.
         """
-        # First, clear the current options
-        self.chart_data_column.clear()
-        
-        # Get the selected data category
-        data_category = self.chart_data_category.currentText()
-        
-        # Default measure available for all categories
-        self.chart_data_column.addItem("SCORE")
-        
-        # Add specific measures based on the data category
-        if data_category == "PLAYER":
-            # Add standard measures
-            self.chart_data_column.addItem("TOTAL_SCORE")
-            self.chart_data_column.addItem("CHEST_COUNT")
+        if not hasattr(self, 'chart_data_column'):
+            return
             
-            # Add source columns from player_overview if available
-            if hasattr(self, 'analysis_results') and self.analysis_results is not None and 'player_overview' in self.analysis_results and not self.analysis_results['player_overview'].empty:
-                # Get all columns except PLAYER, TOTAL_SCORE, and CHEST_COUNT
-                # These should be the source columns (Guild, Battle, Event, etc.)
-                source_columns = [col for col in self.analysis_results['player_overview'].columns 
-                                 if col not in ['PLAYER', 'TOTAL_SCORE', 'CHEST_COUNT']]
-                
-                if self.debug:
-                    print(f"Adding source columns to measures: {source_columns}")
-                
-                # Add all source columns as measures
-                for col in source_columns:
-                    self.chart_data_column.addItem(col)
+        # Remember current selection if possible
+        try:
+            current_selection = self.chart_data_column.currentText()
+        except:
+            current_selection = ""
             
-            # Add efficiency metric if both TOTAL_SCORE and CHEST_COUNT are available
-            if hasattr(self, 'analysis_results') and self.analysis_results is not None and 'player_totals' in self.analysis_results and not self.analysis_results['player_totals'].empty:
-                if 'TOTAL_SCORE' in self.analysis_results['player_totals'].columns and 'CHEST_COUNT' in self.analysis_results['player_totals'].columns:
-                    self.chart_data_column.addItem("EFFICIENCY")
-        elif data_category == "CHEST":
-            # Add CHEST_COUNT measure for chest category
-            self.chart_data_column.addItem("CHEST_COUNT")
-        elif data_category == "SOURCE":
-            # Add CHEST_COUNT measure for source category
-            self.chart_data_column.addItem("CHEST_COUNT")
-        elif data_category == "DATE":
-            # Add CHEST_COUNT measure for date category
-            self.chart_data_column.addItem("CHEST_COUNT")
+        # Block signals to prevent triggering updates during population
+        was_blocked = self.chart_data_column.signalsBlocked()
+        self.chart_data_column.blockSignals(True)
         
-        # Set default measure based on category
-        if data_category == "PLAYER" and self.chart_data_column.findText("TOTAL_SCORE") >= 0:
-            self.chart_data_column.setCurrentText("TOTAL_SCORE")
-        else:
-            # Otherwise select SCORE
-            if self.chart_data_column.findText("SCORE") >= 0:
-                self.chart_data_column.setCurrentText("SCORE")
+        try:
+            # First, clear the current options
+            self.chart_data_column.clear()
+            
+            # Get the selected data category
+            data_category = self.chart_data_category.currentText()
+            
+            # Default measure available for all categories
+            self.chart_data_column.addItem("SCORE")
+            
+            # Add specific measures based on the data category
+            if data_category == "PLAYER":
+                # Add standard measures
+                self.chart_data_column.addItem("TOTAL_SCORE")
+                self.chart_data_column.addItem("CHEST_COUNT")
+                
+                # Add source columns from player_overview if available
+                if hasattr(self, 'analysis_results') and self.analysis_results is not None and 'player_overview' in self.analysis_results and not self.analysis_results['player_overview'].empty:
+                    # Get all columns except PLAYER, TOTAL_SCORE, and CHEST_COUNT
+                    # These should be the source columns (Guild, Battle, Event, etc.)
+                    source_columns = [col for col in self.analysis_results['player_overview'].columns 
+                                     if col not in ['PLAYER', 'TOTAL_SCORE', 'CHEST_COUNT']]
+                    
+                    if self.debug:
+                        print(f"Adding source columns to measures: {source_columns}")
+                    
+                    # Add all source columns as measures
+                    for col in source_columns:
+                        self.chart_data_column.addItem(col)
+                
+                # Add efficiency metric if both TOTAL_SCORE and CHEST_COUNT are available
+                if hasattr(self, 'analysis_results') and self.analysis_results is not None and 'player_totals' in self.analysis_results and not self.analysis_results['player_totals'].empty:
+                    if 'TOTAL_SCORE' in self.analysis_results['player_totals'].columns and 'CHEST_COUNT' in self.analysis_results['player_totals'].columns:
+                        self.chart_data_column.addItem("EFFICIENCY")
+            elif data_category == "CHEST":
+                # Add standard measures for chest category
+                self.chart_data_column.addItem("CHEST_COUNT")
+                self.chart_data_column.addItem("TOTAL_SCORE")
+                
+                # Add efficiency metric if both SCORE and CHEST_COUNT are available
+                if hasattr(self, 'analysis_results') and self.analysis_results is not None and 'chest_totals' in self.analysis_results and not self.analysis_results['chest_totals'].empty:
+                    if 'SCORE' in self.analysis_results['chest_totals'].columns and 'CHEST_COUNT' in self.analysis_results['chest_totals'].columns:
+                        self.chart_data_column.addItem("EFFICIENCY")
+                        
+                # Add additional player-related metrics if available from other analysis results
+                if hasattr(self, 'analysis_results') and self.analysis_results is not None and 'player_overview' in self.analysis_results and not self.analysis_results['player_overview'].empty:
+                    # Get columns that might be relevant for chest analysis
+                    player_columns = [col for col in self.analysis_results['player_overview'].columns 
+                                     if col not in ['PLAYER', 'TOTAL_SCORE', 'CHEST_COUNT'] and not col.startswith('_')]
+                    
+                    if self.debug:
+                        print(f"Adding player columns to chest measures: {player_columns}")
+                    
+                    # Add relevant player columns as measures
+                    for col in player_columns:
+                        if col not in [item.text() for item in [self.chart_data_column.itemText(i) for i in range(self.chart_data_column.count())]]:
+                            self.chart_data_column.addItem(col)
+            elif data_category == "SOURCE":
+                # Add CHEST_COUNT measure for source category
+                self.chart_data_column.addItem("CHEST_COUNT")
+                self.chart_data_column.addItem("TOTAL_SCORE")
+            elif data_category == "DATE":
+                # Add CHEST_COUNT measure for date category
+                self.chart_data_column.addItem("CHEST_COUNT")
+                self.chart_data_column.addItem("TOTAL_SCORE")
+            
+            # Try to keep the previous selection if it's still available
+            if current_selection and self.chart_data_column.findText(current_selection) >= 0:
+                self.chart_data_column.setCurrentText(current_selection)
+            else:
+                # Set default measure based on category
+                if data_category == "PLAYER" and self.chart_data_column.findText("TOTAL_SCORE") >= 0:
+                    self.chart_data_column.setCurrentText("TOTAL_SCORE")
+                elif data_category == "CHEST" and self.chart_data_column.findText("SCORE") >= 0:
+                    self.chart_data_column.setCurrentText("SCORE")
+                else:
+                    # Otherwise select SCORE
+                    if self.chart_data_column.findText("SCORE") >= 0:
+                        self.chart_data_column.setCurrentText("SCORE")
         
-        # Update the chart if needed - only if we have analysis results
-        if self.isVisible() and hasattr(self, 'analysis_results') and self.analysis_results is not None:
-            self.update_chart()
-        elif self.debug:
-            print("Not updating chart: analysis_results is not available or application is not visible")
+        finally:
+            # Restore the previous signal blocking state
+            self.chart_data_column.blockSignals(was_blocked)
+        
+        # We don't need to update the chart here anymore as this is triggered by signal connections
+        # and will cause duplicate chart updates
 
     def update_sort_options(self):
         """
         Update the sort options in the chart_sort_column dropdown based on the selected data category.
         This method is called when the data category is changed.
         """
-        # First, clear the current options
-        self.chart_sort_column.clear()
+        if not hasattr(self, 'chart_sort_column'):
+            return
+            
+        # Remember current selection if possible
+        try:
+            current_selection = self.chart_sort_column.currentText()
+        except:
+            current_selection = ""
+            
+        # Block signals to prevent triggering updates during population
+        was_blocked = self.chart_sort_column.signalsBlocked()
+        self.chart_sort_column.blockSignals(True)
         
-        # Get the selected data category
-        data_category = self.chart_data_category.currentText()
+        try:
+            # First, clear the current options
+            self.chart_sort_column.clear()
+            
+            # Get the selected data category
+            data_category = self.chart_data_category.currentText()
+            
+            # Default sort options available for all categories
+            self.chart_sort_column.addItem("SCORE")
+            
+            # Add specific sort options based on the data category
+            if data_category == "PLAYER":
+                self.chart_sort_column.addItem("TOTAL_SCORE")
+                self.chart_sort_column.addItem("CHEST_COUNT")
+                self.chart_sort_column.addItem("PLAYER")
+            elif data_category == "CHEST":
+                self.chart_sort_column.addItem("CHEST")
+                self.chart_sort_column.addItem("CHEST_COUNT")
+                self.chart_sort_column.addItem("TOTAL_SCORE")
+            elif data_category == "SOURCE":
+                self.chart_sort_column.addItem("SOURCE")
+                self.chart_sort_column.addItem("CHEST_COUNT")
+            elif data_category == "DATE":
+                self.chart_sort_column.addItem("DATE")
+                self.chart_sort_column.addItem("CHEST_COUNT")
+            
+            # Try to keep the previous selection if it's still available
+            if current_selection and self.chart_sort_column.findText(current_selection) >= 0:
+                self.chart_sort_column.setCurrentText(current_selection)
+            else:
+                # Select the first option by default
+                if self.chart_sort_column.count() > 0:
+                    self.chart_sort_column.setCurrentIndex(0)
         
-        # Default sort options available for all categories
-        self.chart_sort_column.addItem("SCORE")
+        finally:
+            # Restore the previous signal blocking state
+            self.chart_sort_column.blockSignals(was_blocked)
         
-        # Add specific sort options based on the data category
-        if data_category == "PLAYER":
-            self.chart_sort_column.addItem("TOTAL_SCORE")
-            self.chart_sort_column.addItem("CHEST_COUNT")
-            self.chart_sort_column.addItem("PLAYER")
-        elif data_category == "CHEST":
-            self.chart_sort_column.addItem("CHEST")
-            self.chart_sort_column.addItem("CHEST_COUNT")
-            self.chart_sort_column.addItem("TOTAL_SCORE")
-        elif data_category == "SOURCE":
-            self.chart_sort_column.addItem("SOURCE")
-            self.chart_sort_column.addItem("CHEST_COUNT")
-        elif data_category == "DATE":
-            self.chart_sort_column.addItem("DATE")
-            self.chart_sort_column.addItem("CHEST_COUNT")
-        
-        # Select the first option by default
-        if self.chart_sort_column.count() > 0:
-            self.chart_sort_column.setCurrentIndex(0)
+        # We don't need to update the chart here anymore as this is triggered by signal connections
+        # and will cause duplicate chart updates
 
     def connect_signals(self):
         """
@@ -2622,10 +2716,11 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'analysis_selector'):
             self.analysis_selector.currentIndexChanged.connect(self.update_analysis_view)
         
-        # Chart signals
+        # Chart signals - connect in a more organized way to prevent redundant updates
         if hasattr(self, 'chart_data_category'):
-            self.chart_data_category.currentIndexChanged.connect(self.update_available_measures)
-            self.chart_data_category.currentIndexChanged.connect(self.update_sort_options)
+            # When chart data category changes, we need to update measures and sort options first,
+            # then update the chart afterward
+            self.chart_data_category.currentIndexChanged.connect(self._update_chart_options)
             
             # Connect chart export buttons if they exist
             if hasattr(self, 'save_chart_button'):
@@ -2633,7 +2728,7 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'export_chart_data_button'):
                 self.export_chart_data_button.clicked.connect(self.export_chart_data)
             
-            # Connect all chart options to update_chart if they exist
+            # Connect all other chart options directly to update_chart
             options_to_connect = [
                 'chart_data_column', 'chart_type_selector',
                 'chart_sort_column', 'chart_sort_order',
@@ -2644,6 +2739,19 @@ class MainWindow(QMainWindow):
             for option_name in options_to_connect:
                 if hasattr(self, option_name):
                     option = getattr(self, option_name)
+                    try:
+                        # Try to disconnect first to prevent duplicate connections
+                        if isinstance(option, QComboBox):
+                            option.currentIndexChanged.disconnect()
+                        elif isinstance(option, QCheckBox):
+                            option.stateChanged.disconnect()
+                        elif isinstance(option, QSpinBox):
+                            option.valueChanged.disconnect()
+                    except (TypeError, RuntimeError):
+                        # Signal was not connected, which is fine
+                        pass
+                        
+                    # Now connect the signal
                     if isinstance(option, QComboBox):
                         option.currentIndexChanged.connect(self.update_chart)
                     elif isinstance(option, QCheckBox):
@@ -2660,6 +2768,35 @@ class MainWindow(QMainWindow):
         
         if self.debug:
             print("All signals connected")
+            
+    def _update_chart_options(self):
+        """
+        Handles updates to chart options when the data category changes.
+        This method is called when chart_data_category is changed.
+        It updates available measures and sort options, then updates the chart.
+        """
+        if self.debug:
+            print("Updating chart options from data category change")
+            
+        # Block signals to prevent cascading updates
+        if hasattr(self, 'chart_data_column'):
+            self.chart_data_column.blockSignals(True)
+        if hasattr(self, 'chart_sort_column'):
+            self.chart_sort_column.blockSignals(True)
+            
+        try:
+            # Update available measures and sort options
+            self.update_available_measures()
+            self.update_sort_options()
+        finally:
+            # Unblock signals
+            if hasattr(self, 'chart_data_column'):
+                self.chart_data_column.blockSignals(False)
+            if hasattr(self, 'chart_sort_column'):
+                self.chart_sort_column.blockSignals(False)
+        
+        # Finally, update the chart with the new selections
+        self.update_chart()
 
     def open_csv_file(self):
         """

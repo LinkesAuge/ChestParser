@@ -362,3 +362,97 @@ if hasattr(self, 'file_label'):
 1. The "No file loaded" text at the top of the import tab now changes to "File loaded: [filename]" when a file is loaded
 2. This change is synchronized with the already-working file info display in the ImportArea widget
 3. The update happens whether the file is loaded via the button or through the menu
+
+## 2024-07-18: Fixed Duplicate Chart Updates and Redundant Data Loading in Charts Tab
+
+### Issue
+When making changes to settings in the Charts tab, the application was triggering multiple redundant chart updates and data loading operations for a single user action. This was causing excessive debug output, redundant data processing, and potential performance issues.
+
+### Root Cause
+Multiple issues contributed to the redundant updates:
+
+1. The `chart_data_category.currentIndexChanged` signal was directly connected to both `update_available_measures` and `update_sort_options` methods, which both called `update_chart`.
+2. Additionally, the `chart_data_category` control was also directly connected to `update_chart`.
+3. Each dropdown item change triggered a complete reload of the chart data, even when the data category hadn't changed.
+4. Signal propagation during dropdown population was causing cascading updates.
+5. No debounce mechanism was in place to prevent rapid successive chart updates.
+
+### Solution
+Implemented a comprehensive solution with multiple improvements:
+
+1. **Debounce mechanism in `update_chart`**:
+   ```python
+   # Implement a debounce mechanism to prevent multiple rapid updates
+   current_time = time.time()
+   if hasattr(self, '_last_chart_update_time') and (current_time - self._last_chart_update_time < 0.2):
+       if self.debug:
+           print(f"Skipping rapid chart update request (interval: {current_time - self._last_chart_update_time:.3f}s)")
+       return
+       
+   # Update the last update time
+   self._last_chart_update_time = current_time
+   ```
+
+2. **Signal blocking during dropdown population**:
+   - Added signal blocking to both `update_available_measures` and `update_sort_options` methods:
+   ```python
+   # Block signals to prevent triggering updates during population
+   was_blocked = self.chart_data_column.signalsBlocked()
+   self.chart_data_column.blockSignals(True)
+   
+   try:
+       # Populate dropdown options...
+   finally:
+       # Restore the previous signal blocking state
+       self.chart_data_column.blockSignals(was_blocked)
+   ```
+
+3. **Preserved selections during updates**:
+   - Made both methods remember and restore the current selection when possible:
+   ```python
+   # Try to keep the previous selection if it's still available
+   if current_selection and self.chart_data_column.findText(current_selection) >= 0:
+       self.chart_data_column.setCurrentText(current_selection)
+   ```
+
+4. **Implemented data caching in `_get_chart_data`**:
+   ```python
+   # Cache check: If we've already retrieved this data category and nothing has changed,
+   # return the cached data to avoid redundant processing
+   if hasattr(self, '_chart_data_cache') and self._chart_data_cache.get('category') == data_category:
+       if self.debug:
+           print(f"Using cached data for category: {data_category}")
+       return self._chart_data_cache.get('data')
+   ```
+
+5. **Improved signal handling in `_update_chart_options`**:
+   ```python
+   def _update_chart_options(self):
+       # Block signals to prevent cascading updates
+       if hasattr(self, 'chart_data_column'):
+           self.chart_data_column.blockSignals(True)
+       if hasattr(self, 'chart_sort_column'):
+           self.chart_sort_column.blockSignals(True)
+           
+       try:
+           # Update available measures and sort options
+           self.update_available_measures()
+           self.update_sort_options()
+       finally:
+           # Unblock signals
+           if hasattr(self, 'chart_data_column'):
+               self.chart_data_column.blockSignals(False)
+           if hasattr(self, 'chart_sort_column'):
+               self.chart_sort_column.blockSignals(False)
+       
+       # Finally, update the chart with the new selections
+       self.update_chart()
+   ```
+
+### Verification
+1. The chart is now updated only once when changing the data category or other chart options
+2. Debug output shows only a single "update_chart called" message for each user action
+3. Data is loaded only when necessary, with most updates using cached data
+4. UI response is significantly faster due to reduced redundant processing
+5. All chart functionality continues to work correctly with proper updates
+6. Signal blocking prevents cascading updates during dropdown population
