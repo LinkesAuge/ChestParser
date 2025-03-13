@@ -179,9 +179,6 @@ The data loading code only showed warnings when required columns were missing, w
 1. Modified the `DataProcessor.load_csv` method to enforce that all required columns must be present:
    ```python
    # Check if required columns are present
-
-**Solution:**
-1. Enhanced the umlaut detection by checking for both proper and garbled umlaut representations:
    required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
    missing_columns = [col for col in required_columns if col not in df.columns]
    
@@ -342,3 +339,26 @@ Confirmed that the application now correctly:
 4. New calculated fields (TOTAL_SCORE and EFFICIENCY) work correctly in charts and exports
 
 All chart functionality continues to work for all data categories, with consistent options available across all grouping types.
+
+## 2024-07-18: Fixed "No file loaded" Text Not Updating
+
+### Issue
+The "No file loaded" text at the top of the import tab doesn't change after a file is successfully loaded. The ImportArea widget correctly shows the selected file name in its own UI component, but the label at the top of the import tab remains unchanged.
+
+### Root Cause
+The `load_csv_file` method updates the ImportArea's `file_info` label (through the fileSelected signal) but doesn't update the MainWindow's `file_label` that appears at the top of the import tab.
+
+### Solution
+Modified the `load_csv_file` method to update the `file_label` after a file is successfully loaded:
+```python
+# Update file label in the import tab
+if hasattr(self, 'file_label'):
+    self.file_label.setText(f"File loaded: {file_path.name}")
+    if self.debug:
+        print(f"Updated file_label with: {file_path.name}")
+```
+
+### Verification
+1. The "No file loaded" text at the top of the import tab now changes to "File loaded: [filename]" when a file is loaded
+2. This change is synchronized with the already-working file info display in the ImportArea widget
+3. The update happens whether the file is loaded via the button or through the menu

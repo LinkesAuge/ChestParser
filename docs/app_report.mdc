@@ -63,6 +63,8 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
 - Fixed missing process_data method that was preventing CSV files from loading properly
 - Fixed export button errors in Raw Data and Analysis tabs by properly handling Path objects
 - Fixed CHEST category chart issues by refactoring the _get_chart_data method with consistent data category handling and improved error checking
+- Fixed "No file loaded" text not updating in the import tab when a file is loaded by properly updating the file_label in the load_csv_file method
+- Enhanced CHEST grouping options in Charts tab to provide consistent sorting and measure options similar to PLAYER grouping
 
 ## Core Components
 

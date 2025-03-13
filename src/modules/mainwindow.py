@@ -299,6 +299,12 @@ class MainWindow(QMainWindow):
             # Update chart
             self.update_chart()
             
+            # Update file label in the import tab
+            if hasattr(self, 'file_label'):
+                self.file_label.setText(f"File loaded: {file_path.name}")
+                if self.debug:
+                    print(f"Updated file_label with: {file_path.name}")
+            
             # Update status message
             self.statusBar().showMessage(f"Loaded {len(self.raw_data)} rows from {file_path.name}")
             

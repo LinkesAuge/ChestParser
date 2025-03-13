@@ -580,3 +580,30 @@ Completed
 - The chart system now provides more comprehensive measure options for all data categories
 - Chart data export now includes source breakdown columns when exporting player data
 - All chart export and save functionality works correctly with proper error handling
+
+## 2024-07-18: Fixed "No file loaded" Text Not Updating in Import Tab
+
+### Task: Fix the "No file loaded" text not updating in the import tab when a file is loaded
+**Status**: Completed
+
+### Details
+- **Problem**: The `file_label` at the top of the import tab showing "No file loaded" wasn't being updated after a CSV file was successfully loaded, even though the ImportArea widget below it correctly showed the selected file name.
+- **Investigation**:
+  - Located where the `file_label` is created in the `setup_import_tab` method in `mainwindow.py`
+  - Found that while the ImportArea was correctly updating its own `file_info` label via the `fileSelected` signal, the MainWindow's `file_label` wasn't being updated
+  - The issue was that `load_csv_file` method didn't update the `file_label` after successfully loading a file
+- **Fix**:
+  - Added code to the `load_csv_file` method to update the `file_label` after a file is successfully loaded:
+    ```python
+    # Update file label in the import tab
+    if hasattr(self, 'file_label'):
+        self.file_label.setText(f"File loaded: {file_path.name}")
+        if self.debug:
+            print(f"Updated file_label with: {file_path.name}")
+    ```
+  - Used `hasattr` check to ensure backward compatibility in case the UI structure changes
+  - Added debug output to help track the update
+- **Results**:
+  - The "No file loaded" text now properly changes to "File loaded: [filename]" when a file is loaded
+  - The update is synchronized with the already-working file info display in the ImportArea
+  - The fix is properly documented in the `bugfixing.mdc` file
