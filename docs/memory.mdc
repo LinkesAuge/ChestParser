@@ -670,3 +670,35 @@ Completed
   - Debug output shows cleaner logs with no duplicate "update_chart called" messages
   - UI responds more quickly with significantly reduced processing
   - All chart functionality continues to work correctly
+
+## 2024-07-18: Fixed AttributeError in Charts Tab Column Check
+
+### Task: Fix AttributeError when adding columns to the CHEST category dropdown
+**Status**: Completed
+
+### Details
+- **Problem**: An error appeared when changing data categories in the Charts tab: `AttributeError: 'str' object has no attribute 'text'`
+- **Investigation**:
+  - Error was triggered in the `update_available_measures` method when trying to check if player columns were already in the dropdown
+  - The issue was in this line: 
+    ```python
+    if col not in [item.text() for item in [self.chart_data_column.itemText(i) for i in range(self.chart_data_column.count())]]:
+    ```
+  - The code incorrectly assumed `self.chart_data_column.itemText(i)` returns objects with a `text()` method
+  - In reality, `itemText(i)` already returns strings, which don't have a `text()` method
+- **Fix**:
+  - Simplified the column check with clearer code:
+    ```python
+    # Get existing items as strings
+    existing_items = [self.chart_data_column.itemText(i) for i in range(self.chart_data_column.count())]
+    
+    # Check if the column is already in the dropdown
+    if col not in existing_items:
+        self.chart_data_column.addItem(col)
+    ```
+  - This approach correctly handles the strings returned by `itemText()` without trying to call any methods on them
+- **Results**:
+  - The Charts tab now works correctly when switching between data categories
+  - Player columns are properly added to the CHEST category measures without errors
+  - The application no longer crashes with this AttributeError
+  - All the dropdown functionality continues to work properly with this fix

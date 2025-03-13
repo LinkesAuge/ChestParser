@@ -2530,7 +2530,11 @@ class MainWindow(QMainWindow):
                     
                     # Add relevant player columns as measures
                     for col in player_columns:
-                        if col not in [item.text() for item in [self.chart_data_column.itemText(i) for i in range(self.chart_data_column.count())]]:
+                        # Get existing items as strings
+                        existing_items = [self.chart_data_column.itemText(i) for i in range(self.chart_data_column.count())]
+                        
+                        # Check if the column is already in the dropdown
+                        if col not in existing_items:
                             self.chart_data_column.addItem(col)
             elif data_category == "SOURCE":
                 # Add CHEST_COUNT measure for source category

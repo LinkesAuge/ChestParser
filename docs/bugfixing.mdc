@@ -456,3 +456,32 @@ Implemented a comprehensive solution with multiple improvements:
 4. UI response is significantly faster due to reduced redundant processing
 5. All chart functionality continues to work correctly with proper updates
 6. Signal blocking prevents cascading updates during dropdown population
+
+## 2024-07-18: Fixed AttributeError in Charts Tab Column Check
+
+### Issue
+After fixing the duplicate chart updates, a new error appeared when changing data categories in the Charts tab: `AttributeError: 'str' object has no attribute 'text'`. This error occurred when adding player columns to the CHEST category measures.
+
+### Root Cause
+In the `update_available_measures` method, there was incorrect code that attempted to call a `text()` method on string objects:
+```python
+if col not in [item.text() for item in [self.chart_data_column.itemText(i) for i in range(self.chart_data_column.count())]]:
+```
+
+The issue was that `self.chart_data_column.itemText(i)` already returns strings, but the code was treating these strings as objects with a `text()` method.
+
+### Solution
+Fixed the code by correctly handling the strings returned by `itemText()`:
+```python
+# Get existing items as strings
+existing_items = [self.chart_data_column.itemText(i) for i in range(self.chart_data_column.count())]
+
+# Check if the column is already in the dropdown
+if col not in existing_items:
+    self.chart_data_column.addItem(col)
+```
+
+### Verification
+1. Changing between data categories in the Charts tab now works without errors
+2. All player columns are correctly added to the CHEST category dropdown without duplications
+3. The application no longer crashes when switching to the CHEST category
