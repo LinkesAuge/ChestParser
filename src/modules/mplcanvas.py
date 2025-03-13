@@ -8,18 +8,25 @@ from pathlib import Path
 import os
 
 class MplCanvas(FigureCanvas):
-    """Matplotlib canvas for embedding in Qt applications."""
+    """Matplotlib canvas for embedding in Qt applications with consistent styling."""
     
     def __init__(self, width=5, height=4, dpi=100):
         """Initialize the canvas with dark theme styling."""
+        # Define style settings first
+        self.define_style_presets()
+        
         # Create figure with dark background
-        self.fig = Figure(figsize=(width, height), dpi=dpi, facecolor='#1A2742')
+        self.fig = Figure(figsize=(width, height), dpi=dpi)
         self.axes = self.fig.add_subplot(111)
         
         # Initialize parent
         super().__init__(self.fig)
         
-        # Set up style presets
+        # Apply dark theme
+        self.apply_default_style()
+    
+    def define_style_presets(self):
+        """Define style presets for the application."""
         self.style_presets = {
             'default': {
                 'bg_color': '#1A2742',  # Dark blue background
@@ -38,14 +45,21 @@ class MplCanvas(FigureCanvas):
                 'edge_color': '#1A2742'  # Dark blue edges
             }
         }
-        
-        # Apply dark theme
+    
+    def apply_default_style(self):
+        """Apply the default style to the chart."""
         self.apply_style('default')
     
     def apply_style(self, style_name='default'):
-        """Apply the dark theme style to the chart."""
+        """
+        Apply the specified style to the chart.
+        
+        Args:
+            style_name (str): The name of the style preset to use
+        """
         if style_name not in self.style_presets:
-            return
+            print(f"Warning: Style '{style_name}' not found, using default")
+            style_name = 'default'
             
         style = self.style_presets[style_name]
         
@@ -54,12 +68,13 @@ class MplCanvas(FigureCanvas):
         self.axes.set_facecolor(style['bg_color'])
         
         # Set text colors
-        self.axes.title.set_color(style['title_color'])
         self.axes.xaxis.label.set_color(style['text_color'])
         self.axes.yaxis.label.set_color(style['text_color'])
+        self.axes.title.set_color(style['title_color'])
+        self.axes.title.set_fontsize(style['title_size'])
         
         # Set tick colors
-        self.axes.tick_params(colors=style['tick_color'])
+        self.axes.tick_params(axis='both', colors=style['tick_color'], labelcolor=style['text_color'])
         
         # Set grid
         self.axes.grid(True, color=style['grid_color'], linestyle='--', alpha=0.3)
@@ -71,30 +86,128 @@ class MplCanvas(FigureCanvas):
         # Update the display
         self.draw()
     
-    def apply_style_to_axes(self, ax, style_name='default'):
+    def reset_figure(self):
         """
-        Apply the dark theme style to the specified axes object.
-        Useful when creating new subplots manually.
+        Reset the figure by clearing it and creating new axes with default styling.
+        Use this before drawing a new chart.
+        
+        Returns:
+            matplotlib.axes.Axes: The new axes object
+        """
+        # Reset matplotlib's global parameters to defaults
+        plt.rcdefaults()
+        
+        # Clear the figure
+        self.fig.clear()
+        
+        # Create new axes
+        self.axes = self.fig.add_subplot(111)
+        
+        # Apply styling
+        self.apply_default_style()
+        
+        # Make sure existing text objects are cleared
+        for text in self.axes.texts:
+            text.remove()
+            
+        return self.axes
+    
+    def add_text(self, x, y, text, ha='center', va='bottom', fontweight='bold', size=None):
+        """
+        Add text to the chart with consistent styling.
         
         Args:
-            ax (matplotlib.axes.Axes): The axes object to style
-            style_name (str, optional): The style preset to use. Defaults to 'default'.
-        """
-        if style_name not in self.style_presets:
-            return
+            x (float): X-coordinate
+            y (float): Y-coordinate
+            text (str): Text to display
+            ha (str, optional): Horizontal alignment. Defaults to 'center'.
+            va (str, optional): Vertical alignment. Defaults to 'bottom'.
+            fontweight (str, optional): Font weight. Defaults to 'bold'.
+            size (int, optional): Font size. Defaults to None.
             
-        style = self.style_presets[style_name]
+        Returns:
+            matplotlib.text.Text: The text object
+        """
+        style = self.style_presets['default']
         
-        # Set axes colors
+        # Create text with consistent styling
+        text_obj = self.axes.text(x, y, text, 
+                                 ha=ha, 
+                                 va=va, 
+                                 color=style['text_color'],
+                                 fontweight=fontweight)
+        
+        # Set size if specified
+        if size is not None:
+            text_obj.set_size(size)
+            
+        return text_obj
+    
+    def add_text_to_axes(self, ax, x, y, text, ha='center', va='bottom', fontweight='bold', size=None):
+        """
+        Add text to specific axes with consistent styling.
+        
+        Args:
+            ax (matplotlib.axes.Axes): The axes to add text to
+            x (float): X-coordinate
+            y (float): Y-coordinate
+            text (str): Text to display
+            ha (str, optional): Horizontal alignment. Defaults to 'center'.
+            va (str, optional): Vertical alignment. Defaults to 'bottom'.
+            fontweight (str, optional): Font weight. Defaults to 'bold'.
+            size (int, optional): Font size. Defaults to None.
+            
+        Returns:
+            matplotlib.text.Text: The text object
+        """
+        style = self.style_presets['default']
+        
+        # Create text with consistent styling
+        text_obj = ax.text(x, y, text, 
+                          ha=ha, 
+                          va=va, 
+                          color=style['text_color'],
+                          fontweight=fontweight)
+        
+        # Set size if specified
+        if size is not None:
+            text_obj.set_size(size)
+            
+        return text_obj
+    
+    def get_colors(self):
+        """
+        Get the color palette used in the application.
+        
+        Returns:
+            list: List of hex color codes for charts
+        """
+        return self.style_presets['default']['bar_colors']
+    
+    def apply_style_to_axes(self, ax):
+        """
+        Apply the default style to external axes.
+        Useful for report charts or manually created subplots.
+        
+        Args:
+            ax (matplotlib.axes.Axes): The axes to style
+            
+        Returns:
+            matplotlib.axes.Axes: The styled axes
+        """
+        style = self.style_presets['default']
+        
+        # Set axes background
         ax.set_facecolor(style['bg_color'])
         
         # Set text colors
-        ax.title.set_color(style['title_color'])
         ax.xaxis.label.set_color(style['text_color'])
         ax.yaxis.label.set_color(style['text_color'])
+        ax.title.set_color(style['title_color'])
+        ax.title.set_fontsize(style['title_size'])
         
         # Set tick colors
-        ax.tick_params(colors=style['tick_color'])
+        ax.tick_params(axis='both', colors=style['tick_color'], labelcolor=style['text_color'])
         
         # Set grid
         ax.grid(True, color=style['grid_color'], linestyle='--', alpha=0.3)
@@ -103,33 +216,11 @@ class MplCanvas(FigureCanvas):
         for spine in ax.spines.values():
             spine.set_color(style['grid_color'])
             
-        # Set title font size
-        ax.title.set_fontsize(style['title_size'])
-        
-        # Update the display
-        self.draw()
-        
+        # Clear any existing text objects
+        for text in ax.texts:
+            text.remove()
+            
         return ax
-    
-    def get_tableau_colors(self):
-        """
-        Get the Tableau-like color palette used in the application.
-        
-        Returns:
-            list: List of hex color codes for charts
-        """
-        return [
-            '#D4AF37',  # Gold
-            '#5991C4',  # Blue
-            '#6EC1A7',  # Green
-            '#D46A5F',  # Red
-            '#A073D1',  # Purple
-            '#F49E5D',  # Orange
-            '#9DC375',  # Light Green
-            '#C4908F',  # Rose
-            '#8595A8',  # Gray Blue
-            '#D9A471',  # Tan
-        ]
     
     def save_figure(self, filepath, dpi=300):
         """
@@ -142,7 +233,14 @@ class MplCanvas(FigureCanvas):
         Returns:
             str: The path the figure was saved to.
         """
-        self.fig.savefig(filepath, dpi=dpi, bbox_inches='tight', facecolor=self.fig.get_facecolor())
+        style = self.style_presets['default']
+        self.fig.savefig(
+            filepath, 
+            dpi=dpi, 
+            bbox_inches='tight', 
+            facecolor=style['bg_color'], 
+            edgecolor='none'
+        )
         return filepath
 
 

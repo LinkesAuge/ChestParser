@@ -433,9 +433,14 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Analysis filters reset")
 
     def update_chart(self):
-        """Update the chart based on the selected group by dimension, measure, chart type, and options."""
+        """
+        Update the chart based on the selected options.
+        
+        This method gets the current chart settings from the UI, prepares the data,
+        and creates the appropriate chart with consistent styling.
+        """
         if self.debug:
-            print(f"Update chart called")
+            print("Update chart called")
         
         # Check if we have necessary UI components
         if not hasattr(self, 'chart_data_category') or not hasattr(self, 'chart_data_column') or not hasattr(self, 'chart_canvas'):
@@ -450,30 +455,13 @@ class MainWindow(QMainWindow):
             return
         
         try:
-            # Clear the figure and axes to prevent overlapping charts
-            self.chart_canvas.fig.clear()
+            # Reset the figure to get a clean canvas with proper styling
+            ax = self.chart_canvas.reset_figure()
             
             # Get the selected options
-            group_by_dimension = self.chart_data_category.currentText()
+            data_category = self.chart_data_category.currentText()
             measure = self.chart_data_column.currentText()
             chart_type = self.chart_type_selector.currentText()
-            
-            # Map the group by dimension to the right data category for getting the correct dataset
-            data_category = ""
-            category_column = ""
-            
-            if group_by_dimension == "PLAYER":
-                data_category = "Player Totals"
-                category_column = 'PLAYER'
-            elif group_by_dimension == "CHEST":
-                data_category = "Chest Totals"
-                category_column = 'CHEST'
-            elif group_by_dimension == "SOURCE":
-                data_category = "Source Totals"
-                category_column = 'SOURCE'
-            elif group_by_dimension == "DATE":
-                data_category = "Date Totals"
-                category_column = 'DATE'
             
             # Get sort options
             sort_column = self.chart_sort_column.currentText()
@@ -487,285 +475,70 @@ class MainWindow(QMainWindow):
             show_values = self.chart_show_values.isChecked()
             show_grid = self.chart_show_grid.isChecked()
             
-            # Get chart colors
-            TABLEAU_COLORS = self.chart_canvas.get_tableau_colors()
-            
             # Set grid visibility according to user preference
-            ax = self.chart_canvas.fig.add_subplot(111)
-            self.chart_canvas.apply_style_to_axes(ax)
-            ax.grid(show_grid, color=self.chart_canvas.style_presets['default']['grid_color'], 
-                  linestyle='--', linewidth=0.5, alpha=0.7)
-            
-            # Get data based on group by dimension (via data category mapping)
-            if data_category == "Player Totals":
-                data = self.analysis_results['player_totals'].copy()
-                if self.debug:
-                    print(f"Player Totals columns: {data.columns.tolist()}")
-            elif data_category == "Chest Totals":
-                data = self.analysis_results['chest_totals'].copy()
-                if self.debug:
-                    print(f"Chest Totals columns: {data.columns.tolist()}")
-            elif data_category == "Source Totals":
-                data = self.analysis_results['source_totals'].copy()
-                if self.debug:
-                    print(f"Source Totals columns: {data.columns.tolist()}")
-            elif data_category == "Date Totals":
-                data = self.analysis_results['date_totals'].copy()
-                if self.debug:
-                    print(f"Date Totals columns: {data.columns.tolist()}")
+            if show_grid:
+                style = self.chart_canvas.style_presets['default']
+                ax.grid(True, color=style['grid_color'], linestyle='--', linewidth=0.5, alpha=0.7)
             else:
-                if self.debug:
-                    print(f"Unknown data category: {data_category}")
-                return
+                ax.grid(False)
             
-            # Check if we have data to display
-            if len(data) == 0:
+            # Get data based on data_category
+            data = self._get_chart_data(data_category)
+            if data is None or len(data) == 0:
                 if self.debug:
                     print(f"No data available for {data_category}")
                 return
             
-            # Make sure the measure column exists in the dataset
+            # Determine category column based on data_category
+            category_column = self._get_category_column(data_category)
+            if category_column not in data.columns:
+                if self.debug:
+                    print(f"Category column {category_column} not found in data")
+                return
+            
+            # Check if measure column exists
             if measure not in data.columns:
-                # Some analyses might have different column names
-                if measure == "TOTAL_SCORE" and "SCORE" in data.columns:
-                    measure = "SCORE"
-                    if self.debug:
-                        print(f"Using SCORE instead of TOTAL_SCORE")
-                elif measure == "CHEST_COUNT" and "COUNT" in data.columns:
-                    # We should not reach this now as we're adding CHEST_COUNT to all datasets,
-                    # but keep as fallback
-                    measure = "COUNT" 
-                    if self.debug:
-                        print(f"Using COUNT instead of CHEST_COUNT")
-                else:
-                    measure = "SCORE"  # Default fallback
-                    if self.debug:
-                        print(f"Using default fallback measure: SCORE")
+                if self.debug:
+                    print(f"Measure column {measure} not found in data: {data.columns.tolist()}")
+                    print(f"Data types: {data.dtypes}")
+                    # Print the first few rows to see what we're dealing with
+                    print(f"Data sample:\n{data.head(3)}")
+                return
                 
-                if self.debug:
-                    print(f"Column {measure} not found, falling back to {measure}")
-            
             # Sort data
-            sort_by = sort_column
-            # If sort column doesn't exist in this dataset, use the measure column
-            if sort_column not in data.columns:
-                sort_by = measure
-                if self.debug:
-                    print(f"Sort column {sort_column} not found, using {measure} instead")
-            
-            data = data.sort_values(sort_by, ascending=sort_ascending)
-            if self.debug:
-                print(f"Sorted data by {sort_by} (ascending={sort_ascending})")
-            
-            # Now apply limit to the sorted data
-            if limit_results and len(data) > limit_value:
-                # For descending order, we want the HIGHEST values, which are at the BEGINNING of the sorted data
-                # For ascending order, we want the LOWEST values, which are at the BEGINNING of the sorted data
+            if sort_column in data.columns:
+                data = data.sort_values(sort_column, ascending=sort_ascending).reset_index(drop=True)
+            else:
+                # Default to sorting by measure
+                data = data.sort_values(measure, ascending=sort_ascending).reset_index(drop=True)
+                
+            # Apply limit if enabled
+            if limit_results and limit_value > 0:
                 data = data.head(limit_value)
                 if self.debug:
                     print(f"Limited to top {limit_value} items after sorting")
             
-            # Adjust category order based on the chart type
-            # For horizontal bar charts, reverse the order to display in proper vertical order
+            # Adjust category order for horizontal bar chart
             if chart_type == "Horizontal Bar" and not sort_ascending:
                 data = data.iloc[::-1].reset_index(drop=True)
             
             # Create chart based on selected chart type
-            chart_title = f"{group_by_dimension} by {measure}"
+            chart_title = f"{data_category} by {measure}"
             
-            if self.debug:
-                print(f"Creating chart with title: {chart_title}")
-                print(f"Using measure column: {measure}")
-                if measure in data.columns:
-                    print(f"Measure column values (first 5): {data[measure].head().tolist()}")
-                else:
-                    print(f"WARNING: Measure column '{measure}' not found in data!")
-                    print(f"Available columns: {data.columns.tolist()}")
+            # Get colors for the chart
+            colors = self.chart_canvas.get_colors()
             
+            # Create the appropriate chart type
             if chart_type == "Bar Chart":
-                # Create a list of colors for each bar (cycle through the palette)
-                colors = [TABLEAU_COLORS[i % len(TABLEAU_COLORS)] for i in range(len(data))]
-                
-                # Create the bar chart with varied colors
-                bars = ax.bar(data[category_column].values, data[measure].values, color=colors)
-                
-                ax.set_ylabel(f'{measure.replace("_", " ").title()}')
-                ax.set_title(chart_title)
-                plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-                
-                # Add values on top of each bar if requested
-                if show_values:
-                    # Clear any existing value texts first to prevent duplicates
-                    for text in ax.texts:
-                        text.remove()
-                    
-                    for bar in bars:
-                        height = bar.get_height()
-                        ax.text(bar.get_x() + bar.get_width()/2., height,
-                               f'{height:,.0f}', ha='center', va='bottom', 
-                               color=self.chart_canvas.style_presets['default']['text_color'], 
-                               fontweight='bold')
-                               
+                self._create_bar_chart(ax, data, category_column, measure, colors, show_values, chart_title)
             elif chart_type == "Horizontal Bar":
-                # Create a list of colors for each bar (cycle through the palette)
-                colors = [TABLEAU_COLORS[i % len(TABLEAU_COLORS)] for i in range(len(data))]
-                
-                # Create the horizontal bar chart with varied colors
-                bars = ax.barh(data[category_column].values, data[measure].values, color=colors)
-                
-                ax.set_xlabel(f'{measure.replace("_", " ").title()}')
-                ax.set_title(chart_title)
-                
-                # Add values at the end of each bar if requested
-                if show_values:
-                    # Clear any existing value texts first to prevent duplicates
-                    for text in ax.texts:
-                        text.remove()
-                    
-                    # Clear any existing value texts first to prevent duplicates
-                    for text in ax.texts:
-                        text.remove()
-                        
-                    for i, bar in enumerate(bars):
-                        value = data[measure].values[i]
-                        ax.text(value, bar.get_y() + bar.get_height()/2, f" {value:,.0f}", 
-                               va='center', 
-                               color=self.chart_canvas.style_presets['default']['text_color'], 
-                               fontweight='bold')
-                
+                self._create_horizontal_bar_chart(ax, data, category_column, measure, colors, show_values, chart_title)
             elif chart_type == "Pie Chart":
-                # Calculate smaller data sample if too many slices would make pie chart unreadable
-                # Clear any existing texts to prevent duplicates
-                for text in ax.texts:
-                    text.remove()
-                
-                pie_data = data
-                if len(data) > 10:
-                    # Limit to top 9 + "Others"
-                    top_items = data.iloc[:9].copy()
-                    others_sum = data.iloc[9:][measure].sum()
-                    others_row = pd.DataFrame({
-                        category_column: ['Others'],
-                        measure: [others_sum]
-                    })
-                    pie_data = pd.concat([top_items, others_row]).reset_index(drop=True)
-                
-                # Clear any existing texts to prevent duplicates
-                for text in ax.texts:
-                    text.remove()
-                
-                # Use multiple colors from TABLEAU_COLORS for pie slices (cycle if needed)
-                colors_to_use = []
-                for i in range(len(pie_data)):
-                    colors_to_use.append(TABLEAU_COLORS[i % len(TABLEAU_COLORS)])
-                    
-                wedges, texts, autotexts = ax.pie(
-                    pie_data[measure].values, 
-                    labels=pie_data[category_column].values, 
-                    autopct='%1.1f%%' if show_values else '',
-                    colors=colors_to_use,
-                    startangle=90,
-                    wedgeprops={'edgecolor': self.chart_canvas.style_presets['default']['bg_color'], 'linewidth': 1}
-                )
-                # Style the pie chart text
-                for text in texts:
-                    text.set_color(self.chart_canvas.style_presets['default']['text_color'])
-                for autotext in autotexts:
-                    autotext.set_color('white')
-                    autotext.set_fontweight('bold')
-                ax.set_title(f'{chart_title} Distribution')
-                
+                self._create_pie_chart(ax, data, category_column, measure, colors, show_values, chart_title)
             elif chart_type == "Line Chart":
-                # For date data, a line chart makes sense as a single line
-                if category_column == 'DATE':
-                    # Sort data by date for line chart to ensure proper chronological order
-                    data = data.sort_values(category_column)
-                    
-                    line = ax.plot(data[category_column].values, data[measure].values, 
-                                  marker='o', color=TABLEAU_COLORS[2],  # Green
-                                  linewidth=2, markersize=8)
-                    
-                    # Add values at each point if requested
-                    if show_values:
-                        # Clear any existing value texts first to prevent duplicates
-                        for text in ax.texts:
-                            text.remove()
-                        
-                        for i, (x, y) in enumerate(zip(data[category_column].values, data[measure].values)):
-                            ax.text(x, y, f'{y:,.0f}', ha='center', va='bottom',
-                                   color=self.chart_canvas.style_presets['default']['text_color'],
-                                   fontweight='bold')
-                    
-                    ax.set_ylabel(f'{measure.replace("_", " ").title()}')
-                    ax.set_title(f'{chart_title} Trends')
-                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-                else:
-                    # For non-date categories, create a line chart with points at regular intervals
-                    x = np.arange(len(data))
-                    line = ax.plot(x, data[measure].values, 
-                                  marker='o', color=TABLEAU_COLORS[2],  # Green
-                                  linewidth=2, markersize=8)
-                    
-                    # Add values at each point if requested
-                    if show_values:
-                        # Clear any existing value texts first to prevent duplicates
-                        for text in ax.texts:
-                            text.remove()
-                        
-                        for i, y in enumerate(data[measure].values):
-                            ax.text(i, y, f'{y:,.0f}', ha='center', va='bottom',
-                                   color=self.chart_canvas.style_presets['default']['text_color'],
-                                   fontweight='bold')
-                    
-                    # Set x-ticks to category names
-                    ax.set_xticks(x)
-                    ax.set_xticklabels(data[category_column].values)
-                    ax.set_ylabel(f'{measure.replace("_", " ").title()}')
-                    ax.set_title(f'{chart_title} Trends')
-                    plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-            
+                self._create_line_chart(ax, data, category_column, measure, colors, show_values, chart_title)
             else:
-                # For non-date categories, use a scatter plot with different colors
-                for i, (category, value) in enumerate(zip(data[category_column].values, data[measure].values)):
-                    color_index = i % len(TABLEAU_COLORS)
-                    ax.scatter(i, value, 
-                            color=TABLEAU_COLORS[color_index],
-                            s=100, zorder=10)
-                    
-                    # Connect points with lines if there are more than one
-                    if i > 0:
-                        # Draw line between points
-                        ax.plot([i-1, i], [data[measure].values[i-1], value], 
-                              color=TABLEAU_COLORS[color_index % len(TABLEAU_COLORS)],
-                              linewidth=1.5, alpha=0.7, zorder=5)
-                
-                # Set the x-tick positions and labels        
-                ax.set_xticks(range(len(data)))
-                ax.set_xticklabels(data[category_column].values)
-                ax.set_ylabel(f'{measure.replace("_", " ").title()}')
-                ax.set_title(f'{chart_title} Comparison')
-                plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
-                
-                # Add values on data points if requested
-            if show_values:
-                    if category_column == 'DATE':
-                        for i, value in enumerate(data[measure].values):
-                            ax.annotate(f'{value:,.0f}', 
-                                    (data[category_column].values[i], value),
-                                    textcoords="offset points", 
-                                    xytext=(0,10), 
-                                    ha='center',
-                                        color=self.chart_canvas.style_presets['default']['text_color'],
-                                        fontweight='bold')
-                    else:
-                        for i, value in enumerate(data[measure].values):
-                            ax.annotate(f'{value:,.0f}', 
-                                      (i, value),
-                                      textcoords="offset points", 
-                                      xytext=(0,10), 
-                                      ha='center',
-                                      color=self.chart_canvas.style_presets['default']['text_color'],
-                                  fontweight='bold')
+                self._create_scatter_chart(ax, data, category_column, measure, colors, show_values, chart_title)
             
             # Adjust layout
             self.chart_canvas.fig.tight_layout()
@@ -774,22 +547,306 @@ class MainWindow(QMainWindow):
             self.chart_canvas.draw()
             
             if self.debug:
-                print(f"Chart updated: {chart_type} for {group_by_dimension} by {measure}")
+                print(f"Chart updated: {chart_type} for {data_category} by {measure}")
                 
         except Exception as e:
             if self.debug:
                 print(f"Error updating chart: {str(e)}")
+                import traceback
                 traceback.print_exc()
-            self.statusBar().showMessage(f"Error updating chart: {str(e)}")
+    
+    def _get_chart_data(self, data_category):
+        """
+        Get chart data based on the selected data category.
+        
+        Args:
+            data_category: The data category to retrieve (PLAYER, CHEST, SOURCE, DATE)
+            
+        Returns:
+            DataFrame: The chart data for the selected category
+        """
+        if self.debug:
+            print(f"\n--- DEBUG: _get_chart_data called with category: {data_category} ---")
+            print(f"Available keys in analysis_results: {list(self.analysis_results.keys())}")
+        
+        if data_category == "PLAYER":
+            # Use player_overview instead of player_totals for PLAYER category
+            if 'player_overview' in self.analysis_results:
+                data = self.analysis_results['player_overview'].copy()
+            if self.debug:
+                    print(f"Player data columns (from player_overview): {data.columns.tolist()}")
+                    print(f"Player data sample:\n{data.head(3)}")
+                    print(f"Player data shape: {data.shape}")
+            return data
+        elif 'player_totals' in self.analysis_results:
+                # Fallback to player_totals if player_overview is not available
+                data = self.analysis_results['player_totals'].copy()
+                if self.debug:
+                    print(f"Player data columns (from player_totals): {data.columns.tolist()}")
+                    print(f"Player data sample:\n{data.head(3)}")
+                    print(f"Player data shape: {data.shape}")
+                    return data
+                else:
+                    if self.debug:
+                        print("Neither 'player_overview' nor 'player_totals' found in analysis_results")
+        elif data_category == "CHEST":
+            if 'chest_totals' in self.analysis_results:
+                return self.analysis_results['chest_totals'].copy()
+        elif data_category == "SOURCE":
+            if 'source_totals' in self.analysis_results:
+                return self.analysis_results['source_totals'].copy()
+        elif data_category == "DATE":
+            if 'date_totals' in self.analysis_results:
+                return self.analysis_results['date_totals'].copy()
+        
+        # If we get here, either the data_category is not recognized or the data is not available
+        if self.debug:
+            print(f"No data available for category '{data_category}' in analysis_results. Available keys: {list(self.analysis_results.keys() if self.analysis_results else [])}")
+        return None
+    
+    def _get_category_column(self, data_category):
+        """
+        Get the appropriate category column based on data category.
+        
+        Args:
+            data_category: The data category (PLAYER, CHEST, SOURCE, DATE)
+            
+        Returns:
+            str: The column name to use for the category
+        """
+        if data_category == "PLAYER":
+            return "PLAYER"
+        elif data_category == "CHEST":
+            return "CHEST"
+        elif data_category == "SOURCE":
+            return "SOURCE"
+        elif data_category == "DATE":
+            return "DATE"
+        
+        # If we get here, the data_category is not recognized
+        if self.debug:
+            print(f"Unknown data category: {data_category}")
+        return None
+    
+    def _create_bar_chart(self, ax, data, category_column, measure, colors, show_values, chart_title):
+        """Create a bar chart with the given data."""
+        # Create list of colors by cycling through the palette
+        bar_colors = [colors[i % len(colors)] for i in range(len(data))]
+        
+        # Create the bar chart
+        bars = ax.bar(data[category_column].values, data[measure].values, color=bar_colors)
+        
+        # Set labels and title
+        ax.set_ylabel(f'{measure.replace("_", " ").title()}')
+        ax.set_title(chart_title)
+        plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+                
+        # Add values on top of bars if requested
+        if show_values:
+            for bar in bars:
+                height = bar.get_height()
+                self.chart_canvas.add_text_to_axes(
+                    ax,
+                    bar.get_x() + bar.get_width()/2.,
+                    height,
+                    f'{height:,.0f}',
+                    ha='center',
+                    va='bottom',
+                    fontweight='bold'
+                )
+    
+    def _create_horizontal_bar_chart(self, ax, data, category_column, measure, colors, show_values, chart_title):
+        """Create a horizontal bar chart with the given data."""
+        # Create list of colors by cycling through the palette
+        bar_colors = [colors[i % len(colors)] for i in range(len(data))]
+        
+        # Create the horizontal bar chart
+        bars = ax.barh(data[category_column].values, data[measure].values, color=bar_colors)
+        
+        # Set labels and title
+        ax.set_xlabel(f'{measure.replace("_", " ").title()}')
+        ax.set_title(chart_title)
+                
+        # Add values at the end of bars if requested
+        if show_values:
+            for i, bar in enumerate(bars):
+                width = bar.get_width()
+                self.chart_canvas.add_text_to_axes(
+                    ax,
+                    width, 
+                    bar.get_y() + bar.get_height()/2, 
+                    f" {width:,.0f}",
+                    ha='left',
+                               va='center', 
+                    fontweight='bold'
+                )
+                
+    def _create_pie_chart(self, ax, data, category_column, measure, colors, show_values, chart_title):
+        """Create a pie chart with the given data."""
+        # Limit to top 9 items + "Others" if there are too many slices
+        pie_data = data
+        if len(data) > 10:
+            top_items = data.iloc[:9].copy()
+            others_sum = data.iloc[9:][measure].sum()
+            others_row = pd.DataFrame({
+                category_column: ['Others'],
+                measure: [others_sum]
+                })
+            pie_data = pd.concat([top_items, others_row]).reset_index(drop=True)
+                
+        # Use multiple colors from the palette (cycle if needed)
+        pie_colors = [colors[i % len(colors)] for i in range(len(pie_data))]
+        
+        # Create the pie chart
+        wedges, texts, autotexts = ax.pie(
+            pie_data[measure].values, 
+            labels=pie_data[category_column].values, 
+            autopct='%1.1f%%' if show_values else '',
+            colors=pie_colors,
+            startangle=90,
+            wedgeprops={'edgecolor': self.chart_canvas.style_presets['default']['bg_color'], 'linewidth': 1}
+            )
+        
+                # Style the pie chart text
+        style = self.chart_canvas.style_presets['default']
+        for text in texts:
+            text.set_color(style['text_color'])
+            for autotext in autotexts:
+                autotext.set_color('white')
+                autotext.set_fontweight('bold')
+        
+        # Set title
+        ax.set_title(f'{chart_title} Distribution')
+                
+    def _create_line_chart(self, ax, data, category_column, measure, colors, show_values, chart_title):
+        """Create a line chart with the given data."""
+        style = self.chart_canvas.style_presets['default']
+        
+        if category_column == 'DATE':
+            # Sort data by date for chronological order
+            data = data.sort_values(category_column)
+            
+            # Plot the line with markers
+            line, = ax.plot(
+                data[category_column].values, 
+                data[measure].values,
+                marker='o', 
+                color=style['line_color'],
+                linewidth=style['line_width'], 
+                markersize=style['marker_size'],
+                markerfacecolor=style['marker_color'],
+                markeredgecolor=style['edge_color']
+            )
+            
+            # Add values at each point if requested
+            if show_values:
+                for i, (x, y) in enumerate(zip(data[category_column].values, data[measure].values)):
+                    self.chart_canvas.add_text_to_axes(
+                        ax,
+                        x,
+                        y,
+                        f'{y:,.0f}',
+                        ha='center',
+                        va='bottom',
+                        fontweight='bold'
+                    )
+            
+            # Set labels and title
+                ax.set_ylabel(f'{measure.replace("_", " ").title()}')
+                ax.set_title(f'{chart_title} Trends')
+                plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+            
+            else:
+            # For non-date categories, create points at regular intervals
+                x = np.arange(len(data))
+            
+            # Plot the line with markers
+            line, = ax.plot(
+                x, 
+                data[measure].values,
+                marker='o', 
+                color=style['line_color'],
+                linewidth=style['line_width'], 
+                markersize=style['marker_size'],
+                markerfacecolor=style['marker_color'],
+                markeredgecolor=style['edge_color']
+            )
+            
+            # Add values at each point if requested
+            if show_values:
+                for i, y in enumerate(data[measure].values):
+                    self.chart_canvas.add_text_to_axes(
+                        ax,
+                        i,
+                        y,
+                        f'{y:,.0f}',
+                        ha='center',
+                        va='bottom',
+                        fontweight='bold'
+                    )
+            
+            # Set x-ticks to category names
+            ax.set_xticks(x)
+            ax.set_xticklabels(data[category_column].values)
+            
+            # Set labels and title
+            ax.set_ylabel(f'{measure.replace("_", " ").title()}')
+            ax.set_title(f'{chart_title} Trends')
+            plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+    
+    def _create_scatter_chart(self, ax, data, category_column, measure, colors, show_values, chart_title):
+        """Create a scatter chart with the given data."""
+        style = self.chart_canvas.style_presets['default']
+        
+        # Plot each point with a different color
+        for i, (category, value) in enumerate(zip(data[category_column].values, data[measure].values)):
+            color_index = i % len(colors)
+            
+            # Add the scatter point
+            ax.scatter(i, value, 
+            color=colors[color_index],
+            s=100, zorder=10)
+                        
+            # Connect points with lines if there are more than one
+            if i > 0:
+                ax.plot([i-1, i], [data[measure].values[i-1], value], 
+                color=colors[color_index],
+                linewidth=1.5, alpha=0.7, zorder=5)
+                    
+                # Set the x-tick positions and labels        
+                ax.set_xticks(range(len(data)))
+                ax.set_xticklabels(data[category_column].values)
+        
+        # Set labels and title
+                ax.set_ylabel(f'{measure.replace("_", " ").title()}')
+                ax.set_title(f'{chart_title} Comparison')
+                plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+                
+                # Add values on data points if requested
+            if show_values:
+                for i, value in enumerate(data[measure].values):
+                    self.chart_canvas.add_text_to_axes(
+                    ax,
+                    i,
+                    value,
+                    f'{value:,.0f}',
+                                    ha='center',
+                    va='bottom',
+                    fontweight='bold'
+                )
     
     def save_chart(self):
         """Save the current chart as an image file."""
+        print("save_chart method called")
         try:
             # Make sure we have a chart to save
+            print("Checking if chart_canvas exists:", hasattr(self, 'chart_canvas'))
             if not hasattr(self, 'chart_canvas') or self.chart_canvas is None:
+                print("No chart canvas found!")
                 QMessageBox.warning(self, "Save Error", "No chart to save.")
-            return
+                return
             
+            print("Chart canvas exists, continuing")
             # Get export directory from config
             export_dir = Path(self.config_manager.get_export_directory())
             if not export_dir.exists():
@@ -831,12 +888,12 @@ class MainWindow(QMainWindow):
                 if not filepath.lower().endswith('.pdf'):
                     filepath += '.pdf'
                 self.chart_canvas.figure.savefig(filepath, format='pdf', bbox_inches='tight',
-                                             facecolor='#1A2742', edgecolor='none')
+                                              facecolor='#1A2742', edgecolor='none')
             elif selected_filter == "SVG Image (*.svg)":
                 if not filepath.lower().endswith('.svg'):
                     filepath += '.svg'
                 self.chart_canvas.figure.savefig(filepath, format='svg', bbox_inches='tight',
-                                             facecolor='#1A2742', edgecolor='none')
+                                              facecolor='#1A2742', edgecolor='none')
                 
             # Show success message
             QMessageBox.information(self, "Save Successful", f"Chart saved to:\n{filepath}")
@@ -847,9 +904,12 @@ class MainWindow(QMainWindow):
             
     def export_chart_data(self):
         """Export the current chart data to a CSV or Excel file."""
+        print("export_chart_data method called")
         try:
             # Make sure we have data to export
+            print("Checking if analysis_results exists")
             if self.analysis_results is None or not self.analysis_results:
+                print("No analysis results to export")
                 QMessageBox.warning(self, "Export Error", "No data to export.")
                 return
             
@@ -860,30 +920,60 @@ class MainWindow(QMainWindow):
                 
             # Get the current data category and column
             if not hasattr(self, 'chart_data_category') or not hasattr(self, 'chart_data_column'):
+                print("Missing chart configuration")
                 QMessageBox.warning(self, "Export Error", "No chart data configuration available.")
                 return
                 
             category = self.chart_data_category.currentText()
+            print(f"Selected category: {category}")
             
             # Determine which dataset to use
             if category == "PLAYER":
-                dataset_key = 'player_totals'
+                # First try to use player_overview which has more data
+                if 'player_overview' in self.analysis_results and not self.analysis_results['player_overview'].empty:
+                    print("Using player_overview dataset")
+                    df = self.analysis_results['player_overview'].copy()
+                # Fall back to player_totals if overview not available
+                elif 'player_totals' in self.analysis_results and not self.analysis_results['player_totals'].empty:
+                    print("Using player_totals dataset")
+                    df = self.analysis_results['player_totals'].copy()
+                else:
+                    print("No player data available")
+                    QMessageBox.warning(self, "Export Error", f"No player data available.")
+                    return
             elif category == "CHEST":
                 dataset_key = 'chest_totals'
+                print(f"Using dataset: {dataset_key}")
+                if dataset_key in self.analysis_results and not self.analysis_results[dataset_key].empty:
+                    df = self.analysis_results[dataset_key].copy()
+                else:
+                    print(f"No data for {dataset_key}")
+                    QMessageBox.warning(self, "Export Error", f"No data available for {dataset_key}.")
+                    return
             elif category == "SOURCE":
                 dataset_key = 'source_totals'
+                print(f"Using dataset: {dataset_key}")
+                if dataset_key in self.analysis_results and not self.analysis_results[dataset_key].empty:
+                    df = self.analysis_results[dataset_key].copy()
+                else:
+                    print(f"No data for {dataset_key}")
+                    QMessageBox.warning(self, "Export Error", f"No data available for {dataset_key}.")
+                    return
             elif category == "DATE":
                 dataset_key = 'date_totals'
+                print(f"Using dataset: {dataset_key}")
+                if dataset_key in self.analysis_results and not self.analysis_results[dataset_key].empty:
+                    df = self.analysis_results[dataset_key].copy()
+                else:
+                    print(f"No data for {dataset_key}")
+                    QMessageBox.warning(self, "Export Error", f"No data available for {dataset_key}.")
+                    return
             else:
+                print(f"Unknown category: {category}")
                 QMessageBox.warning(self, "Export Error", f"Unknown data category: {category}")
                 return
                 
-            # Get the data from analysis results
-            if dataset_key in self.analysis_results and not self.analysis_results[dataset_key].empty:
-                df = self.analysis_results[dataset_key].copy()
-            else:
-                QMessageBox.warning(self, "Export Error", f"No data available for {dataset_key}.")
-                return
+            print(f"Got data with shape: {df.shape}")
                     
             # Generate a default filename based on chart data
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -896,6 +986,7 @@ class MainWindow(QMainWindow):
             )
             
             if not filepath:
+                print("User cancelled export")
                 return
                 
             # Save the directory for next time
@@ -906,218 +997,40 @@ class MainWindow(QMainWindow):
             ascending = self.chart_sort_order.currentText() == "Ascending"
             
             if sort_column in df.columns:
+                print(f"Sorting by {sort_column} ({ascending=})")
                 df = df.sort_values(by=sort_column, ascending=ascending)
                 
             # Apply current limit if enabled
             if self.chart_limit_enabled.isChecked():
                 limit = self.chart_limit_value.value()
+                print(f"Limiting to {limit} rows")
                 df = df.head(limit)
             
             # Export the data
             if selected_filter == "CSV Files (*.csv)":
                 if not filepath.lower().endswith('.csv'):
                     filepath += '.csv'
-                    
+                print(f"Exporting to CSV: {filepath}")
                 # Use the improved CSV writing function from DataProcessor
                 DataProcessor.write_csv_with_umlauts(df, filepath)
                     
             elif selected_filter == "Excel Files (*.xlsx)":
                 if not filepath.lower().endswith('.xlsx'):
                     filepath += '.xlsx'
+                print(f"Exporting to Excel: {filepath}")
                 df.to_excel(filepath, index=False)
                 
-            # Show success message
+            # Update status bar instead of showing popup
+            self.statusBar().showMessage(f"Chart data exported to {filepath}", 5000)
+            
+            # Show success message (only one popup)
             QMessageBox.information(self, "Export Successful", f"Chart data exported to:\n{filepath}")
         
         except Exception as e:
+            print(f"Error exporting chart data: {str(e)}")
             log_error("Error exporting chart data", e)
             traceback.print_exc()
             QMessageBox.warning(self, "Export Error", f"An error occurred while exporting the chart data: {str(e)}")
-
-    def process_data(self):
-        """Process the loaded data to prepare it for analysis and visualization."""
-        if not hasattr(self, 'raw_data') or self.raw_data is None:
-            if self.debug:
-                print("No data to process")
-            return
-        
-        try:
-            if self.debug:
-                print("Starting data processing...")
-            # Make a copy of the data
-            df = self.raw_data.copy()
-            
-            # Check for required columns
-            required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
-            
-            if self.debug:
-                print(f"Available columns: {list(df.columns)}")
-            
-            # Check if all required columns exist (case-insensitive)
-            df_columns_upper = [col.upper() for col in df.columns]
-            missing_columns = [col for col in required_columns if col not in df_columns_upper]
-            
-            if missing_columns:
-                # Show error message
-                missing_cols_str = ", ".join(missing_columns)
-                error_msg = f"Missing required columns: {missing_cols_str}"
-                print(error_msg)
-                self.statusBar().showMessage(error_msg)
-                
-                QMessageBox.critical(
-                    self,
-                    "Missing Required Columns",
-                    f"The CSV file is missing the following required columns: {missing_cols_str}\n\n"
-                    "Please ensure your CSV file has the following columns:\n"
-                    "DATE, PLAYER, SOURCE, CHEST, SCORE"
-                )
-                return
-            
-            # Create a mapping from actual column names to standardized names
-            column_mapping = {}
-            for req_col in required_columns:
-                for actual_col in df.columns:
-                    if actual_col.upper() == req_col:
-                        column_mapping[actual_col] = req_col
-            
-            print(f"Column mapping: {column_mapping}")
-            
-            # Rename columns to standardized names
-            df = df.rename(columns=column_mapping)
-            
-            print("Converting SCORE to numeric...")
-            # Convert SCORE to numeric
-            df['SCORE'] = pd.to_numeric(df['SCORE'], errors='coerce')
-            
-            # Drop rows with NaN SCORE
-            df = df.dropna(subset=['SCORE'])
-            
-            print("Converting DATE to datetime...")
-            # Convert DATE to datetime
-            df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
-            
-            # Drop rows with invalid dates
-            df = df.dropna(subset=['DATE'])
-            
-            # Keep only the required columns
-            df = df[required_columns]
-            
-            print(f"Processed data shape: {df.shape}")
-            print("Sample of processed data:")
-            print(df.head())
-            
-            # Store the processed data
-            self.processed_data = df
-            
-            # Update the column selector
-            if hasattr(self, 'column_selector'):
-                print("Updating column selector...")
-                self.column_selector.clear()
-                self.column_selector.addItems(df.columns.tolist())
-            
-            # Update the raw data table
-            if hasattr(self, 'raw_data_table'):
-                print("Updating raw data table...")
-                model = CustomTableModel(df)
-                self.raw_data_table.setModel(model)
-            
-            # Update status
-            self.statusBar().showMessage(f"Processed {len(df)} records")
-            
-            # Analyze the data
-            print("Analyzing data...")
-            self.analyze_data()
-            
-        except Exception as e:
-            print(f"Error in process_data: {str(e)}")
-            self.statusBar().showMessage(f"Error processing data: {str(e)}")
-            log_error("Error processing data", e, show_traceback=True)
-            
-            # Show error message
-            error_msg = QMessageBox(self)
-            error_msg.setIcon(QMessageBox.Critical)
-            error_msg.setWindowTitle("Error Processing Data")
-            error_msg.setText(f"Error processing data: {str(e)}")
-            error_msg.setDetailedText(traceback.format_exc())
-            error_msg.exec_()
-
-    def update_raw_data_table(self):
-        """Refresh the raw data table with the current processed data."""
-        if self.processed_data is not None:
-            # Check if we need to create a model
-            self._create_raw_data_model()
-            
-            if self.debug:
-                print(f"Updated raw data table with {len(self.processed_data)} rows")
-
-    def filter_raw_data(self):
-        """Apply filters to the raw data table."""
-        if self.raw_data is None:
-            return
-            
-        filtered_data = self.raw_data.copy()
-        
-        try:
-            # Get the current filter state
-            column_name = self.column_selector.currentText()
-            date_filter_enabled = self.date_filter_enabled.isChecked()
-            value_selection_enabled = self.show_value_selection.isChecked()
-            
-            # If value selection is enabled, use selected items
-            if value_selection_enabled:
-                selected_items = self.value_list.selectedItems()
-                if selected_items:
-                    selected_values = [item.text() for item in selected_items]
-                    filtered_data = filtered_data[filtered_data[column_name].astype(str).isin(selected_values)]
-                    
-                    # Show status message about column filtering
-                    status_message = f"Filtered by {column_name}: {len(selected_values)} values selected"
-                else:
-                    # No column filter applied (no values selected)
-                    status_message = "Warning: No values selected for filtering - no results"
-                    QMessageBox.warning(self, "Filter Warning", "No values are selected. Please select at least one value.")
-                    return
-            else:
-                # Value selection is not enabled - using all values
-                status_message = f"Using all values for {column_name}"
-            
-            # Apply date filter if enabled
-            if date_filter_enabled and 'DATE' in filtered_data.columns:
-                start_date = self.start_date_edit.date().toString("yyyy-MM-dd")
-                end_date = self.end_date_edit.date().toString("yyyy-MM-dd")
-                
-                # Convert to datetime for filtering
-                start_date_dt = pd.to_datetime(start_date)
-                end_date_dt = pd.to_datetime(end_date)
-                
-                # Make sure DATE is datetime
-                filtered_data['DATE'] = pd.to_datetime(filtered_data['DATE'])
-                
-                # Filter by date range
-                filtered_data = filtered_data[(filtered_data['DATE'] >= start_date_dt) & 
-                                             (filtered_data['DATE'] <= end_date_dt)]
-                
-                status_message += f", date range: {start_date} to {end_date}"
-            
-            # Update the table with filtered data
-            model = CustomTableModel(filtered_data)
-            self.raw_data_table.setModel(model)
-            
-            # Store as processed data
-            self.processed_data = filtered_data
-            
-            # Update status
-            self.statusBar().showMessage(f"{status_message} - {len(filtered_data)} records")
-            
-        except Exception as e:
-            error_msg = f"Error filtering data: {str(e)}"
-            self.statusBar().showMessage(error_msg)
-            
-            if self.debug:
-                print(error_msg)
-                traceback.print_exc()
-            
-            QMessageBox.warning(self, "Filter Error", error_msg)
 
     def clear_filters(self):
         """Clear all filters and reset the raw data table."""
@@ -1291,6 +1204,15 @@ class MainWindow(QMainWindow):
                 print("Analysis complete, available result types:")
                 for key in analysis_results.keys():
                     print(f"  - {key}: {analysis_results[key].shape if isinstance(analysis_results[key], pd.DataFrame) else 'not a DataFrame'}")
+                
+                # Specifically check player data
+                if 'player_totals' in analysis_results:
+                    print("\nPlayer totals columns:", analysis_results['player_totals'].columns.tolist())
+                    print("Player totals sample:\n", analysis_results['player_totals'].head(3))
+                
+                if 'player_overview' in analysis_results:
+                    print("\nPlayer overview columns:", analysis_results['player_overview'].columns.tolist())
+                    print("Player overview sample:\n", analysis_results['player_overview'].head(3))
             
             # Display different results based on selected analysis type
             if analysis_type == "Player Overview":
@@ -1431,13 +1353,11 @@ class MainWindow(QMainWindow):
     def update_chart_style(self, style):
         """Update the chart style and redraw the current chart."""
         try:
-            if hasattr(self, 'mpl_canvas'):
-                if style == "Default":
-                    plt.style.use('dark_background')
-                elif style == "Light":
-                    plt.style.use('default')
+            if hasattr(self, 'chart_canvas'):
+                # Don't use matplotlib's built-in styles as they override our custom styling
+                # Instead, let our MplCanvas handle the styling
                 
-                # Redraw the chart with the new style
+                # Redraw the chart with the current style
                 self.update_chart()
                 
         except Exception as e:
@@ -1983,24 +1903,7 @@ class MainWindow(QMainWindow):
         # Add splitter to main layout
         main_layout.addWidget(chart_splitter)
         
-        # Connect signals for chart controls
-        self.chart_data_category.currentIndexChanged.connect(self.update_available_measures)
-        self.chart_data_category.currentIndexChanged.connect(self.update_sort_options)
-        self.chart_data_category.currentIndexChanged.connect(self.update_chart)
-        
-        self.chart_data_column.currentIndexChanged.connect(self.update_chart)
-        self.chart_type_selector.currentIndexChanged.connect(self.update_chart)
-        self.chart_sort_column.currentIndexChanged.connect(self.update_chart)
-        self.chart_sort_order.currentIndexChanged.connect(self.update_chart)
-        self.chart_limit_enabled.stateChanged.connect(self.update_chart)
-        self.chart_limit_value.valueChanged.connect(self.update_chart)
-        self.chart_show_values.stateChanged.connect(self.update_chart)
-        self.chart_show_grid.stateChanged.connect(self.update_chart)
-        
-        # Connect save/export buttons
-        self.save_chart_button.clicked.connect(self.save_chart)
-        self.export_chart_data_button.clicked.connect(self.export_chart_data)
-        
+        # Initialize chart measures and sort options (signal connections will be handled in connect_signals)
         # Update measures based on initial Group By selection
         self.update_available_measures()
         self.update_sort_options()
@@ -2119,8 +2022,7 @@ class MainWindow(QMainWindow):
         Generate a chart image for the report.
         
         This helper method creates a chart image file that can be included in HTML reports.
-        Uses multiple colors for different chart elements to ensure consistency with the
-        main application's chart styling.
+        Uses consistent styling with the main application's charts.
         
         Args:
             chart_type (str): The type of chart to generate (e.g., 'Bar Chart', 'Pie Chart')
@@ -2135,375 +2037,428 @@ class MainWindow(QMainWindow):
             temp_file = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
             temp_file.close()
             
-            # Determine which dataset to use based on category_field
-            if category_field == 'PLAYER':
-                if 'player_totals' not in self.analysis_results or self.analysis_results['player_totals'].empty:
-                    return None
-                df = self.analysis_results['player_totals']
-            elif category_field == 'CHEST':
-                if 'chest_totals' not in self.analysis_results or self.analysis_results['chest_totals'].empty:
-                    return None
-                df = self.analysis_results['chest_totals']
-            elif category_field == 'SOURCE':
-                if 'source_totals' not in self.analysis_results or self.analysis_results['source_totals'].empty:
-                    return None
-                df = self.analysis_results['source_totals']
-            elif category_field == 'DATE':
-                if 'date_totals' not in self.analysis_results or self.analysis_results['date_totals'].empty:
-                    return None
-                df = self.analysis_results['date_totals']
-            else:
-                return None
-            
-            # Create a temporary MplCanvas to get consistent styling and colors
+            # Create a temporary canvas to use its styling
             temp_canvas = MplCanvas(width=10, height=6)
+            style = temp_canvas.style_presets['default']
             
-            # Create the figure for the chart using MplCanvas style
-            plt.figure(figsize=(10, 6), facecolor=temp_canvas.style_presets['default']['bg_color'])
+            # Reset matplotlib's global parameters and create a new figure
+            plt.rcdefaults()
+            fig = plt.figure(figsize=(10, 6), facecolor=style['bg_color'])
+            ax = fig.add_subplot(111)
             
-            # Set the style for the chart - dark background with white text
-            plt.style.use('dark_background')
-            
-            # Get current axis
-            ax = plt.gca()
-            
-            # Set axis colors using MplCanvas styling
-            ax.set_facecolor(temp_canvas.style_presets['default']['bg_color'])
-            ax.xaxis.label.set_color(temp_canvas.style_presets['default']['text_color'])
-            ax.yaxis.label.set_color(temp_canvas.style_presets['default']['text_color'])
-            ax.title.set_color(temp_canvas.style_presets['default']['title_color'])
-            ax.tick_params(colors=temp_canvas.style_presets['default']['text_color'])
-            
-            # Get consistent colors from MplCanvas
-            TABLEAU_COLORS = temp_canvas.get_tableau_colors()
-            
-            # Generate the appropriate type of chart
-            if chart_type == 'Bar Chart':
-                if category_field == 'PLAYER':
-                    # Use TOTAL_SCORE for players if available
-                    score_col = 'TOTAL_SCORE' if 'TOTAL_SCORE' in df.columns else 'SCORE'
-                    data = df.sort_values(score_col, ascending=False).head(15)  # Limit to top 15 for readability
-                    
-                    # Create a list of colors for each bar (cycle through the palette)
-                    colors = [TABLEAU_COLORS[i % len(TABLEAU_COLORS)] for i in range(len(data))]
-                    
-                    bars = plt.bar(data['PLAYER'], data[score_col], color=colors)
-                    plt.xticks(rotation=45, ha='right', color=temp_canvas.style_presets['default']['text_color'])
-                    plt.ylabel('Score', color=temp_canvas.style_presets['default']['text_color'])
-                    plt.title('Player Total Scores', color=temp_canvas.style_presets['default']['title_color'], fontsize=14)
-                    
-                    # Add values on top of bars
-                    for bar in bars:
-                        height = bar.get_height()
-                        plt.text(bar.get_x() + bar.get_width()/2., height,
-                              f'{height:,.0f}', ha='center', va='bottom', 
-                              color=temp_canvas.style_presets['default']['text_color'], 
-                              fontweight='bold')
-                    
-                elif category_field == 'CHEST':
-                    data = df.sort_values('SCORE', ascending=False)
-                    
-                    # Create a list of colors for each bar (cycle through the palette)
-                    colors = [TABLEAU_COLORS[i % len(TABLEAU_COLORS)] for i in range(len(data))]
-                    
-                    bars = plt.bar(data['CHEST'], data['SCORE'], color=colors)
-                    plt.xticks(rotation=45, ha='right', color=temp_canvas.style_presets['default']['text_color'])
-                    plt.ylabel('Score', color=temp_canvas.style_presets['default']['text_color'])
-                    plt.title('Scores by Chest Type', color=temp_canvas.style_presets['default']['title_color'], fontsize=14)
-                    
-                    # Add values on top of bars
-                    for bar in bars:
-                        height = bar.get_height()
-                        plt.text(bar.get_x() + bar.get_width()/2., height,
-                              f'{height:,.0f}', ha='center', va='bottom', 
-                              color=temp_canvas.style_presets['default']['text_color'], 
-                              fontweight='bold')
-                    
-                elif category_field == 'SOURCE':
-                    data = df.sort_values('SCORE', ascending=False)
-                    
-                    # Create a list of colors for each bar (cycle through the palette)
-                    colors = [TABLEAU_COLORS[i % len(TABLEAU_COLORS)] for i in range(len(data))]
-                    
-                    bars = plt.bar(data['SOURCE'], data['SCORE'], color=colors)
-                    plt.xticks(rotation=45, ha='right', color=temp_canvas.style_presets['default']['text_color'])
-                    plt.ylabel('Score', color=temp_canvas.style_presets['default']['text_color'])
-                    plt.title('Scores by Source', color=temp_canvas.style_presets['default']['title_color'], fontsize=14)
-                    
-                    # Add values on top of bars
-                    for bar in bars:
-                        height = bar.get_height()
-                        plt.text(bar.get_x() + bar.get_width()/2., height,
-                              f'{height:,.0f}', ha='center', va='bottom', 
-                              color=temp_canvas.style_presets['default']['text_color'], 
-                              fontweight='bold')
-                    
-                elif category_field == 'DATE':
-                    # For dates, sort chronologically
-                    data = df.sort_values('DATE')
-                    
-                    # Create a list of colors for each bar (cycle through the palette)
-                    colors = [TABLEAU_COLORS[i % len(TABLEAU_COLORS)] for i in range(len(data))]
-                    
-                    # Use line chart for date data
-                    plt.plot(data['DATE'], data['SCORE'], marker='o', 
-                           color=TABLEAU_COLORS[0],  # Gold from TABLEAU_COLORS
-                           linewidth=2, markersize=8)
-                    plt.xticks(rotation=45, ha='right', color=temp_canvas.style_presets['default']['text_color'])
-                    plt.ylabel('Score', color=temp_canvas.style_presets['default']['text_color'])
-                    plt.title('Scores by Date', color=temp_canvas.style_presets['default']['title_color'], fontsize=14)
-                    plt.grid(True, alpha=0.3, color=temp_canvas.style_presets['default']['grid_color'])
-                    
-                    # Add values on data points
-                    for i, value in enumerate(data['SCORE']):
-                        plt.annotate(f'{value:,.0f}', 
-                                  (data['DATE'].iloc[i], value),
-                                  textcoords="offset points", 
-                                  xytext=(0,10), 
-                                  ha='center',
-                                  color=temp_canvas.style_presets['default']['text_color'],
-                                  fontweight='bold')
-                
-            elif chart_type == 'Pie Chart':
-                if category_field == 'CHEST':
-                    data = df.sort_values('SCORE', ascending=False)
-                    
-                    # If we have too many slices, limit to top 9 + "Others"
-                    if len(data) > 10:
-                        top_items = data.iloc[:9].copy()
-                        others_sum = data.iloc[9:]['SCORE'].sum()
-                        others_row = pd.DataFrame({
-                            'CHEST': ['Others'],
-                            'SCORE': [others_sum]
-                        })
-                        data = pd.concat([top_items, others_row]).reset_index(drop=True)
-                    
-                    # Create color list for pie slices (one color per slice)
-                    colors = [TABLEAU_COLORS[i % len(TABLEAU_COLORS)] for i in range(len(data))]
-                        
-                    wedges, texts, autotexts = plt.pie(
-                        data['SCORE'], 
-                        labels=data['CHEST'], 
-                        autopct='%1.1f%%', 
-                        startangle=90, 
-                        colors=colors,
-                        wedgeprops={'edgecolor': temp_canvas.style_presets['default']['bg_color'], 'linewidth': 1}
-                    )
-                    plt.axis('equal')
-                    plt.title('Chest Type Distribution by Score', color=temp_canvas.style_presets['default']['title_color'], fontsize=14)
-                    
-                    # Make text visible on dark background
-                    for text in texts:
-                        text.set_color(temp_canvas.style_presets['default']['text_color'])
-                    for autotext in autotexts:
-                        autotext.set_color('white')
-                        autotext.set_fontweight('bold')
-                        
-                elif category_field == 'SOURCE':
-                    data = df.sort_values('SCORE', ascending=False)
-                    
-                    # If we have too many slices, limit to top 9 + "Others"
-                    if len(data) > 10:
-                        top_items = data.iloc[:9].copy()
-                        others_sum = data.iloc[9:]['SCORE'].sum()
-                        others_row = pd.DataFrame({
-                            'SOURCE': ['Others'],
-                            'SCORE': [others_sum]
-                        })
-                        data = pd.concat([top_items, others_row]).reset_index(drop=True)
-                    
-                    # Create color list for pie slices (one color per slice)
-                    colors = [TABLEAU_COLORS[i % len(TABLEAU_COLORS)] for i in range(len(data))]
-                        
-                    wedges, texts, autotexts = plt.pie(
-                        data['SCORE'], 
-                        labels=data['SOURCE'], 
-                        autopct='%1.1f%%', 
-                        startangle=90, 
-                        colors=colors,
-                        wedgeprops={'edgecolor': temp_canvas.style_presets['default']['bg_color'], 'linewidth': 1}
-                    )
-                    plt.axis('equal')
-                    plt.title('Source Distribution by Score', color=temp_canvas.style_presets['default']['title_color'], fontsize=14)
-                    
-                    # Make text visible on dark background
-                    for text in texts:
-                        text.set_color(temp_canvas.style_presets['default']['text_color'])
-                    for autotext in autotexts:
-                        autotext.set_color('white')
-                        autotext.set_fontweight('bold')
-                
-            elif chart_type == 'Stacked Bar Chart' and category_field == 'PLAYER':
-                # Get the player and source columns
-                player_col = 'PLAYER'
-                
-                # Get columns that represent sources (but not the special columns)
-                data_cols = [col for col in df.columns if col not in 
-                            ['PLAYER', 'TOTAL_SCORE', 'CHEST_COUNT', 'AVG_SCORE']]
-                
-                if data_cols:
-                    # Sort by total score
-                    if 'TOTAL_SCORE' in df.columns:
-                        data = df.sort_values('TOTAL_SCORE', ascending=False).head(10)  # Limit to top 10
-                    else:
-                        data = df.head(10)  # Just use first 10 rows if no TOTAL_SCORE
-                    
-                    # Create the stacked bar chart with consistent colors
-                    bottom = np.zeros(len(data))
-                    for i, col in enumerate(data_cols):
-                        if col in data.columns:
-                            values = data[col].fillna(0).values
-                            plt.bar(data[player_col], values, bottom=bottom, 
-                                   label=col, color=TABLEAU_COLORS[i % len(TABLEAU_COLORS)])
-                            bottom += values
-                    
-                    plt.xticks(rotation=45, ha='right', color=temp_canvas.style_presets['default']['text_color'])
-                    plt.ylabel('Score', color=temp_canvas.style_presets['default']['text_color'])
-                    plt.title('Player Scores by Source', color=temp_canvas.style_presets['default']['title_color'], fontsize=14)
-                    
-                    # Customize legend
-                    legend = plt.legend(title='Source', bbox_to_anchor=(1.05, 1), loc='upper left')
-                    legend.get_title().set_color(temp_canvas.style_presets['default']['text_color'])
-                    for text in legend.get_texts():
-                        text.set_color(temp_canvas.style_presets['default']['text_color'])
-                    
-                    plt.tight_layout()
-            
-            elif chart_type == 'Bubble Chart' and category_field == 'PLAYER':
-                # Check if we have the necessary columns
-                if 'TOTAL_SCORE' in df.columns and 'CHEST_COUNT' in df.columns:
-                    # Filter out any rows with zeroes to avoid divide by zero
-                    data = df[(df['TOTAL_SCORE'] > 0) & (df['CHEST_COUNT'] > 0)]
-                    
-                    if not data.empty:
-                        # Calculate efficiency for sizing the bubbles
-                        efficiency = data['TOTAL_SCORE'] / data['CHEST_COUNT']
-                        
-                        # Calculate sizes proportional to efficiency
-                        max_size = 1000
-                        min_size = 100
-                        if efficiency.max() > efficiency.min():
-                            size_scale = ((efficiency - efficiency.min()) / 
-                                         (efficiency.max() - efficiency.min())) * (max_size - min_size) + min_size
-                        else:
-                            size_scale = np.ones(len(efficiency)) * max_size
-                        
-                        # Create the bubble chart with colors from TABLEAU_COLORS
-                        colors = [TABLEAU_COLORS[i % len(TABLEAU_COLORS)] for i in range(len(data))]
-                        scatter = plt.scatter(data['CHEST_COUNT'], data['TOTAL_SCORE'], 
-                                            s=size_scale, alpha=0.7, 
-                                            c=colors)
-                        
-                        # Add player labels
-                        for i, player in enumerate(data['PLAYER']):
-                            plt.annotate(player, 
-                                        (data['CHEST_COUNT'].iloc[i], data['TOTAL_SCORE'].iloc[i]),
-                                        xytext=(5, 5), textcoords='offset points',
-                                        color=temp_canvas.style_presets['default']['text_color'], 
-                                        fontweight='bold')
-                        
-                        plt.xlabel('Chest Count', color=temp_canvas.style_presets['default']['text_color'])
-                        plt.ylabel('Total Score', color=temp_canvas.style_presets['default']['text_color'])
-                        plt.title('Player Efficiency (Score vs Chest Count)', 
-                                color=temp_canvas.style_presets['default']['title_color'], fontsize=14)
+            # Apply consistent styling to the axes
+            ax.set_facecolor(style['bg_color'])
+            ax.tick_params(axis='both', colors=style['text_color'], labelcolor=style['text_color'])
+            ax.xaxis.label.set_color(style['text_color'])
+            ax.yaxis.label.set_color(style['text_color'])
+            ax.title.set_color(style['title_color'])
             
             # Set spine colors to match theme
             for spine in ax.spines.values():
-                spine.set_color(temp_canvas.style_presets['default']['grid_color'])
+                spine.set_color(style['grid_color'])
+            
+            # Clear any existing text objects
+            for text in ax.texts:
+                text.remove()
+            
+            # Get our standard color palette
+            colors = temp_canvas.get_colors()
+            
+            # Get appropriate dataset based on category_field
+            df = self._get_report_chart_data(category_field)
+            if df is None or df.empty:
+                return None
+            
+            # Set measure based on chart type and category_field
+            measure = self._get_report_chart_measure(category_field)
+            if measure not in df.columns:
+                if self.debug:
+                    print(f"Measure {measure} not found in data: {df.columns.tolist()}")
+                    print(f"Data types: {df.dtypes}")
+                    # Print the first few rows to see what we're dealing with
+                    print(f"Data sample:\n{df.head(3)}")
+                return None
+            
+            # Create the chart based on chart_type
+            if chart_type == 'Bar Chart':
+                self._create_report_bar_chart(ax, df, category_field, measure, colors, title)
+            elif chart_type == 'Pie Chart':
+                self._create_report_pie_chart(ax, df, category_field, measure, colors, title)
+            elif chart_type == 'Line Chart':
+                self._create_report_line_chart(ax, df, category_field, measure, colors, title)
+            elif chart_type == 'Scatter Chart':
+                self._create_report_scatter_chart(ax, df, category_field, measure, colors, title)
+            elif chart_type == 'Bubble Chart':
+                self._create_report_bubble_chart(ax, df, category_field, colors, title)
             
             # Setup grid
-            ax.grid(True, color=temp_canvas.style_presets['default']['grid_color'], linestyle='--', alpha=0.3)
+            ax.grid(True, color=style['grid_color'], linestyle='--', alpha=0.3)
             
-            # Adjust layout and save with transparent background
+            # Adjust layout and save
             plt.tight_layout()
-            plt.savefig(temp_file.name, format='png', dpi=150, bbox_inches='tight', 
-                      facecolor=temp_canvas.style_presets['default']['bg_color'], 
-                      edgecolor='none')
+            plt.savefig(
+                temp_file.name, 
+                format='png', 
+                dpi=150, 
+                bbox_inches='tight', 
+                facecolor=style['bg_color'], 
+                edgecolor='none'
+            )
             plt.close()
             
             return temp_file.name
             
         except Exception as e:
             print(f"Error generating chart for report: {e}")
+            import traceback
             traceback.print_exc()
             return None
+    
+    def _get_report_chart_data(self, category_field):
+        """Get the appropriate dataset for a report chart based on category field."""
+        if category_field == 'PLAYER':
+            if 'player_totals' in self.analysis_results and not self.analysis_results['player_totals'].empty:
+                return self.analysis_results['player_totals'].copy()
+        elif category_field == 'CHEST':
+            if 'chest_totals' in self.analysis_results and not self.analysis_results['chest_totals'].empty:
+                return self.analysis_results['chest_totals'].copy()
+        elif category_field == 'SOURCE':
+            if 'source_totals' in self.analysis_results and not self.analysis_results['source_totals'].empty:
+                return self.analysis_results['source_totals'].copy()
+        elif category_field == 'DATE':
+            if 'date_totals' in self.analysis_results and not self.analysis_results['date_totals'].empty:
+                return self.analysis_results['date_totals'].copy()
+        return None
+    
+    def _get_report_chart_measure(self, category_field):
+        """Get the appropriate measure for a report chart based on category field."""
+        if category_field == 'PLAYER':
+            return 'TOTAL_SCORE'
+        else:
+            return 'SCORE'
+    
+    def _create_report_bar_chart(self, ax, df, category_field, measure, colors, title):
+        """Create a bar chart for a report."""
+        # Sort and limit data to top 15 for readability
+        data = df.sort_values(measure, ascending=False).head(15)
+        
+        # Create list of colors by cycling through the palette
+        bar_colors = [colors[i % len(colors)] for i in range(len(data))]
+        
+        # Create the bar chart
+        bars = ax.bar(data[category_field], data[measure], color=bar_colors)
+        
+        # Set labels and title
+        ax.set_ylabel('Score', color=colors[0])
+        ax.set_title(title, color=colors[0], fontsize=14)
+        plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+                    
+         # Add values on top of bars
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(
+                bar.get_x() + bar.get_width()/2.,
+                height,
+                f'{height:,.0f}',
+                                  ha='center',
+                va='bottom',
+                color='white',
+                fontweight='bold'
+            )
+    
+    def _create_report_pie_chart(self, ax, df, category_field, measure, colors, title):
+        """Create a pie chart for a report."""
+        # Sort and limit data to top 9 + "Others" for readability
+        data = df.sort_values(measure, ascending=False)
+        
+        # Limit to top 9 items + "Others" if there are too many slices
+        pie_data = data
+        if len(data) > 10:
+                top_items = data.iloc[:9].copy()
+                others_sum = data.iloc[9:][measure].sum()
+                others_row = pd.DataFrame({
+                category_field: ['Others'],
+                measure: [others_sum]
+            })
+        pie_data = pd.concat([top_items, others_row]).reset_index(drop=True)
+        
+        # Use multiple colors from the palette (cycle if needed)
+        pie_colors = [colors[i % len(colors)] for i in range(len(pie_data))]
+        
+        # Create the pie chart
+        wedges, texts, autotexts = ax.pie(
+            pie_data[measure].values, 
+            labels=pie_data[category_field].values,
+                        autopct='%1.1f%%', 
+            colors=pie_colors,
+                        startangle=90, 
+            wedgeprops={'edgecolor': '#1A2742', 'linewidth': 1}
+                    )
+                    
+        # Style the pie chart text
+        for text in texts:
+            text.set_color('white')
+            for autotext in autotexts:
+                autotext.set_color('white')
+                autotext.set_fontweight('bold')
+                        
+        # Set title
+        ax.set_title(title, color=colors[0], fontsize=14)
+    
+    def _create_report_line_chart(self, ax, df, category_field, measure, colors, title):
+        """Create a line chart for a report."""
+        # For date data, ensure it's sorted chronologically
+        if category_field == 'DATE':
+            data = df.sort_values(category_field)
+        else:
+            # For non-date data, sort by measure
+            data = df.sort_values(measure, ascending=False)
+        
+        # If too many points, limit to top 20
+        if len(data) > 20:
+            data = data.head(20)
+        
+        # For non-date categories, use numeric x-axis
+        if category_field != 'DATE':
+            x = np.arange(len(data))
+            line, = ax.plot(
+                x, 
+                data[measure].values,
+                marker='o', 
+                color=colors[1],  # Blue
+                linewidth=2.5, 
+                markersize=8,
+                markerfacecolor=colors[0],  # Gold
+                markeredgecolor='#1A2742'
+            )
+            
+            # Set x-ticks to category names
+            ax.set_xticks(x)
+            ax.set_xticklabels(data[category_field].values)
+        else:
+            # For dates, use actual date values
+            line, = ax.plot(
+                data[category_field].values, 
+                data[measure].values,
+                marker='o', 
+                color=colors[1],  # Blue
+                linewidth=2.5, 
+                markersize=8,
+                markerfacecolor=colors[0],  # Gold
+                markeredgecolor='#1A2742'
+            )
+        
+        # Add values at each point
+        for i, y in enumerate(data[measure].values):
+            if category_field == 'DATE':
+                x_pos = data[category_field].values[i]
+            else:
+                x_pos = i
+            
+            ax.text(
+                x_pos,
+                y,
+                f'{y:,.0f}',
+                ha='center',
+                va='bottom',
+                color='white',
+                fontweight='bold'
+            )
+        
+        # Set labels and title
+        ax.set_ylabel('Score', color='white')
+        ax.set_title(title, color=colors[0], fontsize=14)
+        plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
+    
+    def _create_report_scatter_chart(self, ax, df, category_field, measure, colors, title):
+        """Create a scatter chart for a report."""
+        # Sort and limit data
+        data = df.sort_values(measure, ascending=False).head(15)
+        
+        # Plot each point with a different color
+        for i, (category, value) in enumerate(zip(data[category_field].values, data[measure].values)):
+            color_index = i % len(colors)
+            
+            # Add the scatter point
+            ax.scatter(i, value, 
+                     color=colors[color_index],
+                     s=100, zorder=10)
+            
+            # Connect points with lines if there are more than one
+            if i > 0:
+                ax.plot([i-1, i], [data[measure].values[i-1], value], 
+                      color=colors[color_index],
+                      linewidth=1.5, alpha=0.7, zorder=5)
+        
+        # Set the x-tick positions and labels
+        ax.set_xticks(range(len(data)))
+        ax.set_xticklabels(data[category_field].values)
+        
+        # Add values on data points
+        for i, value in enumerate(data[measure].values):
+            ax.text(
+                i,
+                value,
+                f'{value:,.0f}',
+                ha='center',
+                va='bottom',
+                color='white',
+                fontweight='bold'
+            )
+        
+        # Set labels and title
+        ax.set_ylabel('Score', color='white')
+        ax.set_title(title, color=colors[0], fontsize=14)
+    
+    def _create_report_bubble_chart(self, ax, df, category_field, colors, title):
+        """
+        Create a bubble chart for reports where the bubble size represents a value.
+        
+        Args:
+            ax: The matplotlib axis to plot on
+            df: The DataFrame containing the data
+            category_field: The category field to use for labels
+            colors: A list of colors to use for the chart
+            title: The title for the chart
+        """
+        if df is None or len(df) == 0:
+            ax.text(0.5, 0.5, "No data available for this chart", 
+                  ha='center', va='center', fontsize=12, color='white')
+            return
+            
+        # For bubble charts, we need player name, CHEST_COUNT (x-axis), TOTAL_SCORE (y-axis)
+        if not all(col in df.columns for col in ['PLAYER', 'CHEST_COUNT', 'TOTAL_SCORE']):
+            missing = [col for col in ['PLAYER', 'CHEST_COUNT', 'TOTAL_SCORE'] if col not in df.columns]
+            ax.text(0.5, 0.5, f"Missing required columns: {', '.join(missing)}", 
+                  ha='center', va='center', fontsize=12, color='white')
+            return
+        
+        # Get the data
+        data = df.sort_values('TOTAL_SCORE', ascending=False).head(20)  # Top 20 players by score
+        
+        # Create a bubble chart - Each point's size represents efficiency (score per chest)
+        # Calculate efficiency (TOTAL_SCORE / CHEST_COUNT)
+        efficiency = data['TOTAL_SCORE'] / data['CHEST_COUNT']
+        
+        # Normalize for bubble size (for better visualization)
+        sizes = 50 * (efficiency / efficiency.max())
+        
+        # Create the scatter plot with varying bubble sizes
+        scatter = ax.scatter(
+            data['CHEST_COUNT'], 
+            data['TOTAL_SCORE'], 
+            s=sizes,  # Bubble size based on efficiency
+            c=colors[0],  # Use first color from the palette
+            alpha=0.6,  # Semi-transparent
+            edgecolors=colors[1]  # Outline with second color
+        )
+        
+        # Add player labels
+        for i, player in enumerate(data['PLAYER']):
+            ax.annotate(
+                player, 
+                (data['CHEST_COUNT'].iloc[i], data['TOTAL_SCORE'].iloc[i]),
+                xytext=(5, 5), textcoords='offset points',
+                color='white', 
+                fontweight='bold'
+            )
+        
+        # Set labels and title
+        ax.set_xlabel('Chest Count', color='white')
+        ax.set_ylabel('Total Score', color='white')
+        ax.set_title(title, color=colors[0], fontsize=14)
 
     def update_available_measures(self):
         """
-        Update the available measures in the chart_data_column combobox based on the selected Group By dimension.
-        This ensures that only relevant measures are displayed for each data category.
+        Update the available measures in the chart_data_column dropdown based on the selected data category.
+        This method is called when the data category is changed.
         """
-        if not hasattr(self, 'chart_data_category') or not hasattr(self, 'chart_data_column'):
-            if hasattr(self, 'debug') and self.debug:
-                print("Chart UI components not found in update_available_measures")
-            return
-            
-        group_by_dimension = self.chart_data_category.currentText()
-        
-        # Block signals to prevent triggering updates while updating the combobox
-        self.chart_data_column.blockSignals(True)
-            
-        # Clear existing items
+        # First, clear the current options
         self.chart_data_column.clear()
-
-        # Populate measures based on the selected dimension
-        if group_by_dimension == "PLAYER":
-            self.chart_data_column.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_SCORE"])
-        elif group_by_dimension == "CHEST":
-            self.chart_data_column.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_SCORE"])
-        elif group_by_dimension == "SOURCE":
-            self.chart_data_column.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_SCORE"])
-        elif group_by_dimension == "DATE":
-            self.chart_data_column.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_VALUE"])
         
-        # Unblock signals
-        self.chart_data_column.blockSignals(False)
+        # Get the selected data category
+        data_category = self.chart_data_category.currentText()
         
-        if hasattr(self, 'debug') and self.debug:
-            print(f"Updated available measures for {group_by_dimension}")
+        # Default measure available for all categories
+        self.chart_data_column.addItem("SCORE")
+        
+        # Add specific measures based on the data category
+        if data_category == "PLAYER":
+            # Add standard measures
+            self.chart_data_column.addItem("TOTAL_SCORE")
+            self.chart_data_column.addItem("CHEST_COUNT")
+            
+            # Add source columns from player_overview if available
+            if hasattr(self, 'analysis_results') and self.analysis_results is not None and 'player_overview' in self.analysis_results and not self.analysis_results['player_overview'].empty:
+                # Get all columns except PLAYER, TOTAL_SCORE, and CHEST_COUNT
+                # These should be the source columns (Guild, Battle, Event, etc.)
+                source_columns = [col for col in self.analysis_results['player_overview'].columns 
+                                 if col not in ['PLAYER', 'TOTAL_SCORE', 'CHEST_COUNT']]
+                
+                if self.debug:
+                    print(f"Adding source columns to measures: {source_columns}")
+                
+                # Add all source columns as measures
+                for col in source_columns:
+                    self.chart_data_column.addItem(col)
+            
+            # Add efficiency metric if both TOTAL_SCORE and CHEST_COUNT are available
+            if hasattr(self, 'analysis_results') and self.analysis_results is not None and 'player_totals' in self.analysis_results and not self.analysis_results['player_totals'].empty:
+                if 'TOTAL_SCORE' in self.analysis_results['player_totals'].columns and 'CHEST_COUNT' in self.analysis_results['player_totals'].columns:
+                    self.chart_data_column.addItem("EFFICIENCY")
+        elif data_category == "CHEST":
+            # Add CHEST_COUNT measure for chest category
+            self.chart_data_column.addItem("CHEST_COUNT")
+        elif data_category == "SOURCE":
+            # Add CHEST_COUNT measure for source category
+            self.chart_data_column.addItem("CHEST_COUNT")
+        elif data_category == "DATE":
+            # Add CHEST_COUNT measure for date category
+            self.chart_data_column.addItem("CHEST_COUNT")
+        
+        # Set default measure based on category
+        if data_category == "PLAYER" and self.chart_data_column.findText("TOTAL_SCORE") >= 0:
+            self.chart_data_column.setCurrentText("TOTAL_SCORE")
+        else:
+            # Otherwise select SCORE
+            if self.chart_data_column.findText("SCORE") >= 0:
+                self.chart_data_column.setCurrentText("SCORE")
+        
+        # Update the chart if needed - only if we have analysis results
+        if self.isVisible() and hasattr(self, 'analysis_results') and self.analysis_results is not None:
+            self.update_chart()
+        elif self.debug:
+            print("Not updating chart: analysis_results is not available or application is not visible")
 
     def update_sort_options(self):
         """
-        Update the available sort options in the chart_sort_column combobox based on the selected Group By dimension.
-        This ensures that appropriate sorting options are displayed for the current chart configuration.
+        Update the sort options in the chart_sort_column dropdown based on the selected data category.
+        This method is called when the data category is changed.
         """
-        if not hasattr(self, 'chart_data_category') or not hasattr(self, 'chart_sort_column'):
-            if hasattr(self, 'debug') and self.debug:
-                print("Chart UI components not found in update_sort_options")
-            return
-            
-        group_by_dimension = self.chart_data_category.currentText()
-        
-        # Block signals to prevent triggering updates while updating the combobox
-        self.chart_sort_column.blockSignals(True)
-        
-        # Clear existing items
+        # First, clear the current options
         self.chart_sort_column.clear()
         
-        # Always add the category column as a sort option
-        self.chart_sort_column.addItem(group_by_dimension)
+        # Get the selected data category
+        data_category = self.chart_data_category.currentText()
         
-        # Add measure-based sort options
-        if group_by_dimension == "PLAYER":
-            self.chart_sort_column.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_SCORE"])
-        elif group_by_dimension == "CHEST":
-            self.chart_sort_column.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_SCORE"])
-        elif group_by_dimension == "SOURCE":
-            self.chart_sort_column.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_SCORE"])
-        elif group_by_dimension == "DATE":
-            self.chart_sort_column.addItems(["TOTAL_SCORE", "CHEST_COUNT", "AVG_VALUE"])
+        # Default sort options available for all categories
+        self.chart_sort_column.addItem("SCORE")
         
-        # Set default sort column to the measure
-        if self.chart_data_column.currentText():
-            sort_column_idx = self.chart_sort_column.findText(self.chart_data_column.currentText())
-            if sort_column_idx >= 0:
-                self.chart_sort_column.setCurrentIndex(sort_column_idx)
+        # Add specific sort options based on the data category
+        if data_category == "PLAYER":
+            self.chart_sort_column.addItem("TOTAL_SCORE")
+            self.chart_sort_column.addItem("CHEST_COUNT")
+            self.chart_sort_column.addItem("PLAYER")
+        elif data_category == "CHEST":
+            self.chart_sort_column.addItem("CHEST")
+        elif data_category == "SOURCE":
+            self.chart_sort_column.addItem("SOURCE")
+        elif data_category == "DATE":
+            self.chart_sort_column.addItem("DATE")
         
-        # Unblock signals
-        self.chart_sort_column.blockSignals(False)
-        
-        if hasattr(self, 'debug') and self.debug:
-            print(f"Updated sort options for {group_by_dimension}")
+        # Select the first option by default
+        if self.chart_sort_column.count() > 0:
+            self.chart_sort_column.setCurrentIndex(0)
 
     def connect_signals(self):
         """
@@ -2521,14 +2476,17 @@ class MainWindow(QMainWindow):
             # Disconnect first to prevent duplicate connections
             try:
                 self.import_area.select_button.clicked.disconnect()
-            except TypeError:
+            except (TypeError, RuntimeError):
                 # Signal was not connected, which is fine
                 pass
             self.import_area.select_button.clicked.connect(self.import_area.open_file_dialog)
             
+            # Use a safer approach to disconnect signals
             try:
-                self.import_area.fileSelected.disconnect()
-            except TypeError:
+                # First check if signal exists and is connected
+                if hasattr(self.import_area, 'fileSelected') and self.import_area.fileSelected is not None:
+                    self.import_area.fileSelected.disconnect()
+            except (TypeError, RuntimeError):
                 # Signal was not connected, which is fine
                 pass
             self.import_area.fileSelected.connect(self.load_csv_file)
@@ -2599,17 +2557,14 @@ class MainWindow(QMainWindow):
         
         # Chart signals
         if hasattr(self, 'chart_data_category'):
+            self.chart_data_category.currentIndexChanged.connect(self.update_available_measures)
             self.chart_data_category.currentIndexChanged.connect(self.update_sort_options)
             
-            # Connect chart update button if it exists
-            if hasattr(self, 'chart_update_button'):
-                self.chart_update_button.clicked.connect(self.update_chart)
-            
-            # Connect chart export button if it exists
-            if hasattr(self, 'chart_export_button'):
-                self.chart_export_button.clicked.connect(self.export_chart)
-            elif hasattr(self, 'save_chart_button'):
+            # Connect chart export buttons if they exist
+            if hasattr(self, 'save_chart_button'):
                 self.save_chart_button.clicked.connect(self.save_chart)
+            if hasattr(self, 'export_chart_data_button'):
+                self.export_chart_data_button.clicked.connect(self.export_chart_data)
             
             # Connect all chart options to update_chart if they exist
             options_to_connect = [
@@ -2631,21 +2586,17 @@ class MainWindow(QMainWindow):
                     
         # Report signals
         if hasattr(self, 'report_type_selector'):
-            if hasattr(self, 'report_generate_button'):
-                self.report_generate_button.clicked.connect(self.generate_report)
-            elif hasattr(self, 'generate_report_button'):
+            if hasattr(self, 'generate_report_button'):
                 self.generate_report_button.clicked.connect(self.generate_report)
-                
-            if hasattr(self, 'report_export_button'):
-                self.report_export_button.clicked.connect(self.export_report)
-            elif hasattr(self, 'export_report_button'):
+            if hasattr(self, 'export_report_button'):
                 self.export_report_button.clicked.connect(self.export_report)
         
         if self.debug:
             print("All signals connected")
 
     def open_csv_file(self):
-        """Open a file dialog to select a CSV file.
+        """
+        Open a file dialog to select a CSV file.
         
         This method is maintained for backward compatibility with existing signal connections.
         It delegates to the ImportArea's open_file_dialog method.
@@ -2665,206 +2616,6 @@ class MainWindow(QMainWindow):
         else:
             if self.debug:
                 print("ImportArea not available, can't open file dialog")
-
-    def export_raw_data(self):
-        """Export the currently displayed raw data to a CSV file."""
-        if not hasattr(self, 'raw_data_table') or not hasattr(self, 'processed_data'):
-            self.statusBar().showMessage("No data to export")
-            return
-            
-        try:
-            # Get the current filtered data from the proxy model
-            if hasattr(self, 'raw_data_proxy_model'):
-                model = self.raw_data_proxy_model
-                
-                # Get the number of rows and columns in the proxy model
-                rows = model.rowCount()
-                cols = model.columnCount()
-                
-                if rows == 0 or cols == 0:
-                    self.statusBar().showMessage("No data to export after filtering")
-                    return
-                    
-                # Get the source model (CustomTableModel)
-                source_model = model.sourceModel()
-                
-                # Get the header names
-                headers = [source_model.headerData(col, Qt.Horizontal) for col in range(cols)]
-                
-                # Create a new DataFrame to hold the filtered data
-                filtered_data = pd.DataFrame(columns=headers)
-                
-                # Populate the DataFrame with filtered data
-                for row in range(rows):
-                    row_data = {}
-                    for col in range(cols):
-                        # Map the proxy model index to the source model index
-                        source_index = model.mapToSource(model.index(row, col))
-                        
-                        # Get the data from the source model
-                        value = source_model.data(source_index, Qt.DisplayRole)
-                        
-                        # Add to row data dictionary
-                        row_data[headers[col]] = value
-                    
-                    # Add the row to the DataFrame
-                    filtered_data.loc[row] = row_data
-                
-                # If we have no data after filtering, show a message
-                if filtered_data.empty:
-                    self.statusBar().showMessage("No data to export after filtering")
-                    return
-                    
-                # Check export directory
-                export_dir = self.config_manager.get_export_directory()
-                
-                # Create the export directory if it doesn't exist
-                if not os.path.exists(export_dir):
-                    Path(export_dir).mkdir(parents=True, exist_ok=True)
-                
-                # Default filename
-                default_filename = str(Path(export_dir) / "raw_data_export.csv")
-                
-                # Show save dialog
-                file_path, _ = QFileDialog.getSaveFileName(
-                    self, "Export Raw Data", default_filename, "CSV Files (*.csv)"
-                )
-                
-                if not file_path:
-                    return  # User canceled
-                
-                # Use DataProcessor to write CSV with proper umlaut handling
-                if DataProcessor.write_csv_with_umlauts(filtered_data, file_path):
-                    self.statusBar().showMessage(f"Raw data exported to {file_path}")
-                else:
-                    QMessageBox.warning(
-                        self,
-                        "Export Error",
-                        "Failed to export data to CSV. See console for details.",
-                        QMessageBox.Ok
-                    )
-            else:
-                self.statusBar().showMessage("No filtered data available to export")
-        except Exception as e:
-            if self.debug:
-                print(f"Error exporting raw data: {str(e)}")
-                traceback.print_exc()
-            self.statusBar().showMessage(f"Error exporting data: {str(e)}")
-            QMessageBox.warning(
-                self,
-                "Export Error",
-                f"An error occurred while exporting: {str(e)}",
-                QMessageBox.Ok
-            )
-    
-    def export_analysis_data(self):
-        """Export the current analysis view to a CSV file."""
-        if not hasattr(self, 'analysis_view') or not hasattr(self, 'analysis_results'):
-            self.statusBar().showMessage("No analysis data to export")
-            return
-            
-        try:
-            # Get the current analysis view
-            current_view = self.analysis_selector.currentText()
-            
-            # Get the appropriate DataFrame based on the selected view
-            if current_view == "Player Totals":
-                df = self.analysis_results['player_totals'].copy()
-            elif current_view == "Chest Totals":
-                df = self.analysis_results['chest_totals'].copy()
-            elif current_view == "Source Totals":
-                df = self.analysis_results['source_totals'].copy()
-            elif current_view == "Date Totals":
-                df = self.analysis_results['date_totals'].copy()
-            elif current_view == "Player Overview":
-                df = self.analysis_results['player_overview'].copy()
-            else:
-                self.statusBar().showMessage(f"Unknown analysis view: {current_view}")
-                return
-            
-            # If we have a proxy model, get the filtered data
-            if hasattr(self, 'analysis_proxy_model'):
-                model = self.analysis_proxy_model
-                source_model = model.sourceModel()
-                
-                # Get the column count and header names
-                cols = source_model.columnCount()
-                headers = [source_model.headerData(col, Qt.Horizontal) for col in range(cols)]
-                
-                # Get the row count from the filtered model
-                rows = model.rowCount()
-                
-                if rows == 0:
-                    self.statusBar().showMessage("No data to export after filtering")
-                    return
-                
-                # Create a new DataFrame for filtered data
-                filtered_data = pd.DataFrame(columns=headers)
-                
-                # Populate the DataFrame with filtered data
-                for row in range(rows):
-                    row_data = {}
-                    for col in range(cols):
-                        # Map the proxy model index to the source model index
-                        source_index = model.mapToSource(model.index(row, col))
-                        
-                        # Get the data from the source model
-                        value = source_model.data(source_index, Qt.DisplayRole)
-                        
-                        # Add to row data dictionary
-                        row_data[headers[col]] = value
-                    
-                    # Add the row to the DataFrame
-                    filtered_data.loc[row] = row_data
-                
-                # Use the filtered data for export
-                df = filtered_data
-            
-            # Check if we have data to export
-            if df is None or df.empty:
-                self.statusBar().showMessage("No data available for export")
-                return
-            
-            # Check export directory
-            export_dir = self.config_manager.get_export_directory()
-            
-            # Create the export directory if it doesn't exist
-            if not os.path.exists(export_dir):
-                Path(export_dir).mkdir(parents=True, exist_ok=True)
-            
-            # Default filename
-            default_filepath = str(Path(export_dir) / f"{current_view.lower().replace(' ', '_')}_export.csv")
-            
-            # Show save dialog
-            file_path, _ = QFileDialog.getSaveFileName(
-                self, "Export Analysis", default_filepath, "CSV Files (*.csv)"
-            )
-            
-            if not file_path:
-                return  # User canceled
-            
-            # Use DataProcessor to write CSV with proper umlaut handling
-            if DataProcessor.write_csv_with_umlauts(df, file_path):
-                self.statusBar().showMessage(f"Analysis data exported to {file_path}")
-            else:
-                QMessageBox.warning(
-                    self,
-                    "Export Error",
-                    "Failed to export data to CSV. See console for details.",
-                    QMessageBox.Ok
-                )
-                
-        except Exception as e:
-            if self.debug:
-                print(f"Error exporting analysis data: {str(e)}")
-                traceback.print_exc()
-            self.statusBar().showMessage(f"Error exporting data: {str(e)}")
-            QMessageBox.warning(
-                self,
-                "Export Error",
-                f"An error occurred while exporting: {str(e)}",
-                QMessageBox.Ok
-            )
 
     def generate_report(self):
         """
@@ -3990,3 +3741,388 @@ class MainWindow(QMainWindow):
         html += "</body></html>"
         
         return html
+
+    def _apply_report_chart_style(self, fig, ax, style_dict):
+        """
+        Apply consistent styling to report charts.
+        
+        Args:
+            fig: The matplotlib figure
+            ax: The matplotlib axes
+            style_dict: Dictionary with style settings
+        """
+        # Set figure background
+        fig.patch.set_facecolor(style_dict['bg_color'])
+        
+        # Set axes background
+        ax.set_facecolor(style_dict['bg_color'])
+        
+        # Set text colors
+        ax.xaxis.label.set_color(style_dict['text_color'])
+        ax.yaxis.label.set_color(style_dict['text_color'])
+        ax.title.set_color(style_dict['title_color'])
+        
+        # Set tick colors and parameters - ensure label color is explicitly set
+        ax.tick_params(axis='both', colors=style_dict['text_color'], 
+                     labelcolor=style_dict['text_color'])
+        
+        # Set spine colors
+        for spine in ax.spines.values():
+            spine.set_color(style_dict['grid_color'])
+            
+        # Clear any existing text objects
+        for text in ax.texts:
+            text.remove()
+
+    def _add_styled_text(self, ax, x, y, text, ha='center', va='bottom', fontweight='bold', size=None):
+        """
+        Add text to the chart with consistent styling.
+        
+        Args:
+            ax: The matplotlib axes
+            x: X-coordinate
+            y: Y-coordinate
+            text: Text to display
+            ha: Horizontal alignment
+            va: Vertical alignment
+            fontweight: Font weight (normal, bold, etc.)
+            size: Font size (optional)
+        """
+        # Delegate to the MplCanvas add_styled_text method for consistency
+        return self.chart_canvas.add_styled_text(ax, x, y, text, ha, va, fontweight, size)
+
+    def reset_report_chart_style(self, canvas_style):
+        """
+        Reset and apply consistent styling to report charts.
+        
+        Args:
+            canvas_style: Dictionary with style settings from the MplCanvas
+        
+        Returns:
+            tuple: The newly created figure and axes
+        """
+        # Reset all of matplotlib's rc parameters to default
+        plt.rcdefaults()
+        
+        # Create a new figure with correct background color
+        fig = plt.figure(figsize=(10, 6), facecolor=canvas_style['bg_color'])
+        ax = fig.add_subplot(111)
+        
+        # Apply consistent styling
+        self._apply_report_chart_style(fig, ax, canvas_style)
+        
+        return fig, ax
+
+    def _add_report_styled_text(self, ax, x, y, text, temp_canvas, ha='center', va='bottom', fontweight='bold', size=None):
+        """
+        Add styled text to a report chart using the temporary canvas for styling information.
+        
+        This method draws text on the chart with styling based on the temporary canvas's style presets.
+        It ensures consistent text appearance across all charts in reports.
+        
+        Args:
+            ax: The matplotlib axis to add the text to
+            x, y: The coordinates for the text
+            text: The text to add
+            temp_canvas: A temporary canvas containing style information
+            ha: Horizontal alignment (default: 'center')
+            va: Vertical alignment (default: 'bottom')
+            fontweight: Font weight (default: 'bold')
+            size: Font size (default: None, uses default size)
+        """
+        # Get text color from the temp canvas style presets
+        text_color = temp_canvas.style_presets['default']['text_color']
+        
+        # Set font size based on parameter or use default
+        if size is None:
+            size = 10  # Default size
+            
+        # Add the text with styling
+        ax.text(x, y, text, ha=ha, va=va, fontweight=fontweight, 
+                color=text_color, size=size)
+
+    def _create_report_bubble_chart(self, ax, df, category_field, colors, title):
+        """
+        Create a bubble chart for reports where the bubble size represents a value.
+        
+        Args:
+            ax: The matplotlib axis to plot on
+            df: The DataFrame containing the data
+            category_field: The category field to use for labels
+            colors: A list of colors to use for the chart
+            title: The title for the chart
+        """
+        if df is None or len(df) == 0:
+            ax.text(0.5, 0.5, "No data available for this chart", 
+                  ha='center', va='center', fontsize=12, color='white')
+            return
+            
+        # For bubble charts, we need player name, CHEST_COUNT (x-axis), TOTAL_SCORE (y-axis)
+        if not all(col in df.columns for col in ['PLAYER', 'CHEST_COUNT', 'TOTAL_SCORE']):
+            missing = [col for col in ['PLAYER', 'CHEST_COUNT', 'TOTAL_SCORE'] if col not in df.columns]
+            ax.text(0.5, 0.5, f"Missing required columns: {', '.join(missing)}", 
+                  ha='center', va='center', fontsize=12, color='white')
+            return
+        
+        # Get the data
+        data = df.sort_values('TOTAL_SCORE', ascending=False).head(20)  # Top 20 players by score
+        
+        # Create a bubble chart - Each point's size represents efficiency (score per chest)
+        # Calculate efficiency (TOTAL_SCORE / CHEST_COUNT)
+        efficiency = data['TOTAL_SCORE'] / data['CHEST_COUNT']
+        
+        # Normalize for bubble size (for better visualization)
+        sizes = 50 * (efficiency / efficiency.max())
+        
+        # Create the scatter plot with varying bubble sizes
+        scatter = ax.scatter(
+            data['CHEST_COUNT'], 
+            data['TOTAL_SCORE'], 
+            s=sizes,  # Bubble size based on efficiency
+            c=colors[0],  # Use first color from the palette
+            alpha=0.6,  # Semi-transparent
+            edgecolors=colors[1]  # Outline with second color
+        )
+        
+        # Add player labels
+        for i, player in enumerate(data['PLAYER']):
+            ax.annotate(
+                player, 
+                (data['CHEST_COUNT'].iloc[i], data['TOTAL_SCORE'].iloc[i]),
+                xytext=(5, 5), textcoords='offset points',
+                color='white', 
+                fontweight='bold'
+            )
+        
+        # Set labels and title
+        ax.set_xlabel('Chest Count', color='white')
+        ax.set_ylabel('Total Score', color='white')
+        ax.set_title(title, color=colors[0], fontsize=14)
+
+    def export_raw_data(self):
+        """
+        Export the currently displayed raw data to a CSV file.
+        
+        This method exports the filtered raw data that is currently displayed in the
+        Raw Data tab. The file is saved to the configured export directory.
+        """
+        if self.raw_data is None or self.raw_data.empty:
+            QMessageBox.warning(self, "Export Error", "No data available to export.")
+            return
+            
+        # Get export directory from config
+        export_dir = Path('data/exports')
+        if hasattr(self, 'config_manager'):
+            export_dir = self.config_manager.get_export_directory()
+            
+        # Ensure export directory exists
+        export_dir.mkdir(parents=True, exist_ok=True)
+            
+        # Generate default filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        default_filename = f"TotalBattle_RawData_{timestamp}.csv"
+        
+        # Get file path from user
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Export Raw Data",
+            str(export_dir / default_filename),
+            "CSV Files (*.csv);;All Files (*)"
+        )
+        
+        if not file_path:
+            return  # User cancelled
+            
+        try:
+            # Export data to CSV
+            if hasattr(self, 'filter_proxy_model') and self.filter_proxy_model is not None:
+                # Get the filtered data from the proxy model
+                filtered_data = self.raw_data.iloc[
+                    [self.filter_proxy_model.mapToSource(self.filter_proxy_model.index(i, 0)).row() 
+                     for i in range(self.filter_proxy_model.rowCount())]
+                ]
+                # Write to CSV with proper encoding for German characters
+                filtered_data.to_csv(file_path, index=False, encoding='utf-8-sig')
+            else:
+                # Export all raw data if no filter is applied
+                self.raw_data.to_csv(file_path, index=False, encoding='utf-8-sig')
+                
+            self.statusBar().showMessage(f"Data exported to {file_path}", 5000)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export data: {str(e)}")
+            if self.debug:
+                print(f"Export error: {e}")
+    
+    def export_analysis_data(self):
+        """
+        Export the currently displayed analysis data to a CSV file.
+        
+        This method exports the filtered analysis data that is currently displayed in the
+        Analysis tab. The file is saved to the configured export directory.
+        """
+        if not hasattr(self, 'analysis_data') or self.analysis_data is None or self.analysis_data.empty:
+            QMessageBox.warning(self, "Export Error", "No analysis data available to export.")
+            return
+            
+        # Get export directory from config
+        export_dir = Path('data/exports')
+        if hasattr(self, 'config_manager'):
+            export_dir = self.config_manager.get_export_directory()
+            
+        # Ensure export directory exists
+        export_dir.mkdir(parents=True, exist_ok=True)
+            
+        # Get the current analysis view
+        view_type = self.analysis_selector.currentText() if hasattr(self, 'analysis_selector') else "Analysis"
+        
+        # Generate default filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        default_filename = f"TotalBattle_{view_type}_{timestamp}.csv"
+        
+        # Get file path from user
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            f"Export {view_type} Data",
+            str(export_dir / default_filename),
+            "CSV Files (*.csv);;All Files (*)"
+        )
+        
+        if not file_path:
+            return  # User cancelled
+            
+        try:
+            # Export data to CSV
+            if hasattr(self, 'analysis_proxy_model') and self.analysis_proxy_model is not None:
+                # Get the filtered data from the proxy model
+                filtered_data = self.analysis_data.iloc[
+                    [self.analysis_proxy_model.mapToSource(self.analysis_proxy_model.index(i, 0)).row() 
+                     for i in range(self.analysis_proxy_model.rowCount())]
+                ]
+                # Write to CSV with proper encoding for German characters
+                filtered_data.to_csv(file_path, index=False, encoding='utf-8-sig')
+            else:
+                # Export all analysis data if no filter is applied
+                self.analysis_data.to_csv(file_path, index=False, encoding='utf-8-sig')
+                
+            self.statusBar().showMessage(f"{view_type} data exported to {file_path}", 5000)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Export Error", f"Failed to export data: {str(e)}")
+            if self.debug:
+                print(f"Export error: {e}")
+
+    def process_data(self):
+        """Process the loaded data to prepare it for analysis and visualization."""
+        if not hasattr(self, 'raw_data') or self.raw_data is None:
+            if self.debug:
+                print("No data to process")
+            return
+        
+        try:
+            if self.debug:
+                print("Starting data processing...")
+            # Make a copy of the data
+            df = self.raw_data.copy()
+            
+            # Check for required columns
+            required_columns = ['DATE', 'PLAYER', 'SOURCE', 'CHEST', 'SCORE']
+            
+            if self.debug:
+                print(f"Available columns: {list(df.columns)}")
+            
+            # Check if all required columns exist (case-insensitive)
+            df_columns_upper = [col.upper() for col in df.columns]
+            missing_columns = [col for col in required_columns if col not in df_columns_upper]
+            
+            if missing_columns:
+                # Show error message
+                missing_cols_str = ", ".join(missing_columns)
+                error_msg = f"Missing required columns: {missing_cols_str}"
+                print(error_msg)
+                self.statusBar().showMessage(error_msg)
+                
+                QMessageBox.critical(
+                    self,
+                    "Missing Required Columns",
+                    f"The CSV file is missing the following required columns: {missing_cols_str}\n\n"
+                    "Please ensure your CSV file has the following columns:\n"
+                    "DATE, PLAYER, SOURCE, CHEST, SCORE"
+                )
+                return
+            
+            # Create a mapping from actual column names to standardized names
+            column_mapping = {}
+            for req_col in required_columns:
+                for actual_col in df.columns:
+                    if actual_col.upper() == req_col:
+                        column_mapping[actual_col] = req_col
+            
+            if self.debug:
+                print(f"Column mapping: {column_mapping}")
+            
+            # Rename columns to standardized names
+            df = df.rename(columns=column_mapping)
+            
+            if self.debug:
+                print("Converting SCORE to numeric...")
+            # Convert SCORE to numeric
+            df['SCORE'] = pd.to_numeric(df['SCORE'], errors='coerce')
+            
+            # Drop rows with NaN SCORE
+            df = df.dropna(subset=['SCORE'])
+            
+            if self.debug:
+                print("Converting DATE to datetime...")
+            # Convert DATE to datetime
+            df['DATE'] = pd.to_datetime(df['DATE'], errors='coerce')
+            
+            # Drop rows with invalid dates
+            df = df.dropna(subset=['DATE'])
+            
+            # Keep only the required columns
+            df = df[required_columns]
+            
+            if self.debug:
+                print(f"Processed data shape: {df.shape}")
+                print("Sample of processed data:")
+                print(df.head())
+            
+            # Store the processed data
+            self.processed_data = df
+            
+            # Update the column selector
+            if hasattr(self, 'column_selector'):
+                if self.debug:
+                    print("Updating column selector...")
+                self.column_selector.clear()
+                self.column_selector.addItems(df.columns.tolist())
+            
+            # Update the raw data table
+            if hasattr(self, 'raw_data_table'):
+                if self.debug:
+                    print("Updating raw data table...")
+                model = CustomTableModel(df)
+                self.raw_data_table.setModel(model)
+            
+            # Update status
+            self.statusBar().showMessage(f"Processed {len(df)} records")
+            
+            # Analyze the data
+            if self.debug:
+                print("Analyzing data...")
+            self.analyze_data()
+            
+        except Exception as e:
+            print(f"Error in process_data: {str(e)}")
+            self.statusBar().showMessage(f"Error processing data: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            # Show error message
+            error_msg = QMessageBox(self)
+            error_msg.setIcon(QMessageBox.Critical)
+            error_msg.setWindowTitle("Error Processing Data")
+            error_msg.setText(f"Error processing data: {str(e)}")
+            error_msg.setDetailedText(traceback.format_exc())
+            error_msg.exec_()

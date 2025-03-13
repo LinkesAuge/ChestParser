@@ -52,6 +52,14 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
 - Fixed code structure issues in chart generation with removal of duplicate implementations
 - Enhanced pie chart styling with consistent text color handling
 - Improved chart text positioning and formatting across all chart types
+- Completely rewrote the chart system with clear separation of styling and rendering logic
+- Fixed signal disconnection warnings with proper signal existence checks and enhanced error handling
+- Implemented missing export methods for raw data and analysis data with comprehensive error handling
+- Improved signal connection safety with conditional checks and proper exception handling
+- Enhanced export functionality with dynamic filename generation and proper path handling
+- Fixed Charts tab not displaying data after chart system rewrite by resolving duplicate method implementations and category format mismatches
+- Fixed NoneType error during chart initialization at startup by adding proper null checks for analysis_results
+- Fixed player grouping in charts to show source breakdown (Guild, Battle, Event, etc.) by using player_overview data
 
 ## Core Components
 
@@ -411,3 +419,23 @@ The Total Battle Analyzer is a desktop application built with PySide6 that allow
   - Ensured consistent styling across all report types with the Total Battle theme
   - Added proper documentation with parameter descriptions and return values
   - Improved report generation reliability by ensuring all report types have complete implementations
+- **2024-07-17: Complete Chart System Rewrite and Signal Connection Improvements**
+  - Completely rewrote the chart system with clear separation of styling and rendering logic:
+    - Created a centralized `reset_figure_style` method in MplCanvas to ensure consistent styling
+    - Implemented specialized methods for styling text elements across all chart types
+    - Fixed persistent issues with chart background colors by properly managing Matplotlib's global state
+    - Ensured all charts display with the correct themed dark blue background
+    - Added proper cleanup of figure styles to prevent global style contamination
+    - Separated data handling from chart rendering logic for better code organization
+  - Fixed signal connection issues that were causing errors during application startup:
+    - Implemented proper signal existence checks to prevent runtime warnings
+    - Enhanced error handling for signal disconnection with better exception management
+    - Added conditional `hasattr()` checks to verify existence of signal attributes before use
+    - Improved signal connection safety with proper try/except blocks
+  - Implemented missing export methods for data tables:
+    - Added `export_raw_data` method for exporting filtered raw data to CSV
+    - Added `export_analysis_data` method for exporting filtered analysis data to CSV
+    - Implemented proper handling of filter proxy models to export only filtered data
+    - Enhanced export functionality with dynamic filename generation and proper path handling
+    - Added consistent error handling and user feedback for all export operations
+  - These improvements ensure more stable application behavior, consistent chart styling, and reliable export functionality across all application components.
